@@ -9,17 +9,29 @@ import { db, DB_PREFIX, STATE } from "./app.js";
 
 // ─── Role Configuration ────────────────────────────────────────────────────────
 
-const ROLES = {
+export const ROLES = {
   werewolf: { name: "มนุษย์หมาป่า", icon: "🐺", team: "werewolf", color: "#ef4444",
-    description: "ล่าชาวบ้านหนึ่งคนในแต่ละคืน ชนะเมื่อหมาป่ามีจำนวนเท่ากับหรือมากกว่าชาวบ้านที่เหลือ" },
+    description: "ล่าชาวบ้านหนึ่งคนในแต่ละคืน ชนะเมื่อจำนวนหมาป่าเท่ากับชาวบ้าน" },
   seer:     { name: "หมอดู",         icon: "🔮", team: "villager", color: "#a78bfa",
-    description: "ในแต่ละคืน เลือกผู้เล่นหนึ่งคนเพื่อเปิดเผยบทบาทที่แท้จริงของเขา (รู้เฉพาะตัวเอง)" },
+    description: "ในแต่ละคืน เลือกเปิดเผยบทบาทที่แท้จริงของผู้เล่นหนึ่งคน" },
   doctor:   { name: "แพทย์",         icon: "💉", team: "villager", color: "#10b981",
-    description: "ในแต่ละคืน ปกป้องผู้เล่นหนึ่งคนจากการถูกหมาป่าโจมตี สามารถรักษาตัวเองได้ครั้งเดียว" },
+    description: "ในแต่ละคืน ปกป้องผู้เล่นหนึ่งคนจากการถูกฆ่า (กันรุมไม่ได้ ช่วยตัวเองได้ 1 ครั้ง)" },
   villager: { name: "ชาวบ้าน",       icon: "🏘️", team: "villager", color: "#f59e0b",
-    description: "ไม่มีพลังพิเศษ ใช้เหตุผลและโหวตเอาหมาป่าออกก่อนที่มันจะสายเกินไป" },
+    description: "ไม่มีพลังพิเศษ โหวตไล่หมาป่าในตอนกลางวัน" },
+  witch:    { name: "แม่มด",         icon: "🧹", team: "villager", color: "#d946ef",
+    description: "มียาชุบชีวิต 1 ขวด และยาพิษ 1 ขวด (ใช้ได้แค่อย่างละ 1 ครั้งตลอดเกม)" },
+  hunter:   { name: "พรานป่า",       icon: "🔫", team: "villager", color: "#ea580c",
+    description: "หากตายหรือถูกโหวตออก สามารถลาก 1 คนให้ตายตามไปด้วยได้" },
+  cupid:    { name: "คิวปิด",        icon: "💘", team: "villager", color: "#f43f5e",
+    description: "คืนแรกเลือก 2 คนให้เป็นคู่รัก หากตาย 1 คน อีกคนจะตายตาม" },
+  tanner:   { name: "คนฟอกหนัง",     icon: "😤", team: "neutral",  color: "#854d0e",
+    description: "ชนะคนเดียวหากถูกโหวตแขวนคอ" },
+  minion:   { name: "สมุนหมาป่า",    icon: "🦹", team: "werewolf", color: "#9f1239",
+    description: "รู้ว่าใครเป็นหมาป่า (แต่หมาป่าไม่รู้ตัวคุณ) ไม่มีสิทธิ์ฆ่าใคร" },
+  sorcerer: { name: "หมอผี",         icon: "🧙‍♂️", team: "werewolf", color: "#4f46e5",
+    description: "คืนนี้ส่องหาหมอดู (จะรู้แค่ว่าใช่หมอดูหรือไม่)" },
   gm:       { name: "ผู้ดำเนินเกม", icon: "🎭", team: "none",     color: "#8b5cf6",
-    description: "คุณคือผู้ดำเนินเกม ควบคุมทุกเฟส และประกาศผู้ชนะ" },
+    description: "คุณคือผู้ดำเนินเกม ควบคุมทุกเฟส" },
 };
 
 export function getRoleConfig(roleKey) {
@@ -28,20 +40,19 @@ export function getRoleConfig(roleKey) {
 
 // ─── Role Assignment (excludes GM/host) ────────────────────────────────────────
 
-export function assignRoles(playerIds) {
+export function assignRoles(playerIds, customDeck) {
   const count = playerIds.length;
-  const roles = [];
+  let roles = customDeck ? [...customDeck] : [];
 
-  let wolfCount = 1;
-  if (count >= 7)  wolfCount = 2;
-  if (count >= 11) wolfCount = 3;
-
-  for (let i = 0; i < wolfCount; i++) roles.push("werewolf");
-
-  if (count >= 4) roles.push("seer");
-  if (count >= 5) roles.push("doctor");
-
-  while (roles.length < count) roles.push("villager");
+  // Fallback if no custom deck provided or sizes mismatch
+  if (roles.length !== count) {
+    roles = [];
+    let wolfCount = count >= 7 ? 2 : 1;
+    for (let i = 0; i < wolfCount; i++) roles.push("werewolf");
+    if (count >= 4) roles.push("seer");
+    if (count >= 5) roles.push("doctor");
+    while (roles.length < count) roles.push("villager");
+  }
 
   // Shuffle roles
   for (let i = roles.length - 1; i > 0; i--) {
@@ -61,10 +72,9 @@ export function assignRoles(playerIds) {
 
 export async function startGame() {
   if (!STATE.isHost) return;
-  const players = STATE.roomData?.players || {};
+  const room = STATE.roomData || {};
+  const players = room.players || {};
   const ids = Object.keys(players);
-
-  // GM (host) is excluded from player roles
   const nonGMIds = ids.filter(id => id !== STATE.playerId);
 
   if (nonGMIds.length < 4) {
@@ -72,32 +82,32 @@ export async function startGame() {
     return;
   }
 
-  const roleMap = assignRoles(nonGMIds);
-  const playerUpdates = {};
+  const counts = room.roleDeckCounts || {};
+  let customDeck = [];
+  for (const [r, c] of Object.entries(counts)) {
+    for (let i = 0; i < c; i++) customDeck.push(r);
+  }
+  if (customDeck.length === 0) customDeck = null; // trigger fallback if empty
 
-  // Mark host as GM
-  playerUpdates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}/role`]    = "gm";
-  playerUpdates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}/isAlive`] = true;
-  playerUpdates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}/vote`]    = "";
-  playerUpdates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}/isReady`] = true;
-
-  for (const id of nonGMIds) {
-    playerUpdates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}/role`]    = roleMap[id];
-    playerUpdates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}/isAlive`] = true;
-    playerUpdates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}/vote`]    = "";
-    playerUpdates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}/isReady`] = false;
+  if (customDeck && customDeck.length !== nonGMIds.length) {
+    alert("จำนวนการ์ดไม่เท่ากับจำนวนผู้เล่นที่พร้อม!");
+    return;
   }
 
-  await update(ref(db), {
-    ...playerUpdates,
-    [`${DB_PREFIX}/rooms/${STATE.roomId}/status`]:          "playing",
-    [`${DB_PREFIX}/rooms/${STATE.roomId}/phase`]:           "standby",   // GM controls first night
-    [`${DB_PREFIX}/rooms/${STATE.roomId}/dayCount`]:        0,
-    [`${DB_PREFIX}/rooms/${STATE.roomId}/timerEnd`]:        null,
-    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions`]:    null,
-    [`${DB_PREFIX}/rooms/${STATE.roomId}/lastElimination`]: null,
-    [`${DB_PREFIX}/rooms/${STATE.roomId}/winnerTeam`]:      null,
-  });
+  const roleMap = assignRoles(nonGMIds, customDeck);
+  const updates = {};
+  for (const [pId, roleStr] of Object.entries(roleMap)) {
+    updates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${pId}/role`] = roleStr;
+    updates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${pId}/isAlive`] = true;
+    updates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${pId}/vote`] = "";
+  }
+  
+  // Set GM role
+  updates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}/role`] = "gm";
+  updates[`${DB_PREFIX}/rooms/${STATE.roomId}/status`] = "playing";
+  updates[`${DB_PREFIX}/rooms/${STATE.roomId}/phase`] = "standby";
+
+  await update(ref(db), updates);
 }
 
 // ─── Phase: Night (GM-triggered) ──────────────────────────────────────────────
@@ -128,19 +138,28 @@ export async function startNightPhase() {
 
 // ─── Night Action Submission (player-triggered) ───────────────────────────────
 
-export async function submitNightAction(role, targetId) {
+export async function submitNightAction(role, targetId, extraData = null) {
+  // Support custom extra actions like Witch poison vs heal
   const actionMap = {
     werewolf: "werewolfTarget",
     seer:     "seerTarget",
     doctor:   "doctorTarget",
+    witch:    "witchTarget",
+    cupid:    "cupidTarget",
+    sorcerer: "sorcererTarget"
   };
   const key = actionMap[role];
   if (!key) return;
 
-  await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/nightActions`), {
+  const payload = {
     [key]:          targetId,
     [`${key}Done`]: true,
-  });
+  };
+  if (role === "witch") {
+    payload["witchActionType"] = extraData;
+  }
+
+  await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/nightActions`), payload);
 
   // Seer gets private result
   if (role === "seer") {
@@ -172,20 +191,29 @@ async function checkNightActionsComplete() {
   const players = room.players || {};
   const actions  = room.nightActions || {};
 
-  // Only count alive non-GM players
-  const aliveRoles = Object.values(players)
-    .filter(p => p.isAlive && p.role !== "gm")
-    .map(p => p.role);
+  const activeRoles = new Set(
+    Object.values(players)
+      .filter(p => p.isAlive && p.role !== "gm")
+      .map(p => p.role)
+  );
 
-  const hasWolf   = aliveRoles.includes("werewolf");
-  const hasSeer   = aliveRoles.includes("seer");
-  const hasDoctor = aliveRoles.includes("doctor");
+  const reqCheck = [
+    { role: "werewolf", key: "werewolfTargetDone" },
+    { role: "seer",     key: "seerTargetDone" },
+    { role: "doctor",   key: "doctorTargetDone" },
+    { role: "sorcerer", key: "sorcererTargetDone" },
+    { role: "witch",    key: "witchTargetDone" }
+  ];
 
-  const wolfDone   = !hasWolf   || actions.werewolfTargetDone;
-  const seerDone   = !hasSeer   || actions.seerTargetDone;
-  const doctorDone = !hasDoctor || actions.doctorTargetDone;
+  if (room.dayCount === 1) {
+    reqCheck.push({ role: "cupid", key: "cupidTargetDone" });
+  }
 
-  if (wolfDone && seerDone && doctorDone) {
+  const allDone = reqCheck.every(({ role, key }) => {
+    return !activeRoles.has(role) || actions[key];
+  });
+
+  if (allDone) {
     await resolveNight(room);
   }
 }
@@ -199,31 +227,57 @@ export async function resolveNight(roomData) {
 
   const werewolfTarget = actions.werewolfTarget;
   const doctorTarget   = actions.doctorTarget;
+  const witchTarget    = actions.witchTarget;
+  const witchType      = actions.witchActionType; // 'heal' or 'poison'
 
-  let killedPlayerId = null;
+  let killedIds = [];
+
+  // Werewolf kill
+  let wolfKill = null;
   if (werewolfTarget && werewolfTarget !== doctorTarget) {
-    killedPlayerId = werewolfTarget;
+    wolfKill = werewolfTarget;
   }
 
+  // Witch heal
+  if (wolfKill && witchType === "heal" && witchTarget === wolfKill) {
+    wolfKill = null;
+  }
+
+  if (wolfKill) killedIds.push(wolfKill);
+
+  // Witch poison
+  if (witchType === "poison" && witchTarget) {
+    if (!killedIds.includes(witchTarget)) killedIds.push(witchTarget);
+  }
+
+  // Cupid Lovers Logic could go here (if one dies, the other dies), but we'll leave it to GM to manage complicated death chains manually for now, or just implement basic linking.
+  // We'll record lovers for GM.
+  
   // Apply kill silently (before GM announces)
-  if (killedPlayerId && players[killedPlayerId]?.isAlive) {
-    await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${killedPlayerId}`), {
-      isAlive: false,
-    });
+  for (const id of killedIds) {
+    if (players[id]?.isAlive) {
+      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}`), {
+        isAlive: false,
+      });
+    }
   }
 
-  const reason = killedPlayerId
-    ? "werewolf"
-    : (doctorTarget && doctorTarget === werewolfTarget ? "protected" : "no-action");
+  let reason = "no-action";
+  if (killedIds.length > 0) {
+    reason = witchType === "poison" ? "witch-and-wolf" : "werewolf";
+  } else if (doctorTarget || witchType === "heal") {
+    reason = "protected";
+  }
 
   const nightResult = {
-    killedId:   killedPlayerId   || null,
-    killedName: killedPlayerId   ? players[killedPlayerId]?.name : null,
-    killedRole: killedPlayerId   ? players[killedPlayerId]?.role : null,
+    killedId:   killedIds[0] || null, // Primary killed
+    killedIds:  killedIds,            // Array of killed (in case of double kill)
     wolfTarget:  werewolfTarget  || null,
-    wolfName:    werewolfTarget  ? players[werewolfTarget]?.name  : null,
     doctorTarget: doctorTarget   || null,
-    doctorName:   doctorTarget   ? players[doctorTarget]?.name    : null,
+    witchTarget: witchTarget || null,
+    witchType: witchType || null,
+    cupidTarget1: actions.cupidTarget || null,
+    cupidTarget2: actions.cupidTarget2 || null,
     reason,
   };
 
@@ -252,8 +306,8 @@ export async function gmAnnounceNightResult() {
 
   const elimRecord = result.killedId ? {
     playerId:   result.killedId,
-    playerName: result.killedName,
-    playerRole: result.killedRole,
+    playerName: players[result.killedId]?.name,
+    playerRole: players[result.killedId]?.role,
     reason:     result.reason,
     timestamp:  Date.now(),
   } : {

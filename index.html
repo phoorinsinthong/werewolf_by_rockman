@@ -183,37 +183,27 @@
 
         <!-- Host controls -->
         <div id="host-controls" class="glass-card lobby-section-card host-controls-card hidden">
-          <p class="lobby-section-title"><span>🎭</span> ควบคุมผู้ดำเนินเกม</p>
-          <p class="host-hint">ผู้เล่นต้องกด "พร้อม" ทุกคน และต้องมีผู้เล่นอย่างน้อย 4 คน (ไม่นับ GM)</p>
-          <button id="btn-start-game" class="btn btn-primary" disabled>
-            <span class="front">🎭 เริ่มเกม (ต้องการ 4 คน)</span>
+          <p class="lobby-section-title"><span>🎭</span> ตัวจัดการการ์ดเกม (เฉพาะ GM)</p>
+          <p class="host-hint" style="color:#d946ef;">กรุณาจัดเตรียมไพ่บทบาท ให้มีจำนวนรวมเท่ากับผู้เล่นที่กดพร้อม</p>
+          
+          <div class="deck-counter-header mt-2 text-center" style="font-size: 1.1em; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+            <strong>ยอดไพ่ที่เลือก: <span id="deck-count-selected" style="color:#f59e0b">0</span> / <span id="deck-count-required">0</span> </strong>
+          </div>
+          
+          <div id="gm-deck-setup" class="mt-3">
+             <!-- Dynamically populated by JS -->
+          </div>
+
+          <button id="btn-start-game" class="btn btn-primary mt-3" disabled>
+            <span class="front">🎭 จำนวนไพ่ยังไม่พอดี</span>
           </button>
         </div>
 
         <!-- Role info -->
         <div class="glass-card lobby-section-card">
-          <p class="lobby-section-title"><span>🎭</span> บทบาทในเกมนี้</p>
-          <div class="role-info-grid">
-            <div class="role-info-item" style="border-color:rgba(220,38,38,0.25); background: rgba(220,38,38,0.05)">
-              <span class="role-info-icon">🐺</span>
-              <span class="role-info-name" style="color:#f87171">มนุษย์หมาป่า</span>
-              <span class="role-info-desc">ฆ่าชาวบ้านหนึ่งคนในแต่ละคืน ชนะเมื่อมีจำนวนเท่ากับฝ่ายชาวบ้าน</span>
-            </div>
-            <div class="role-info-item" style="border-color:rgba(251,191,36,0.25); background: rgba(251,191,36,0.05)">
-              <span class="role-info-icon">🏘️</span>
-              <span class="role-info-name" style="color:#fde68a">ชาวบ้าน</span>
-              <span class="role-info-desc">ไม่มีพลังพิเศษ ร่วมกันหาหมาป่าและโหวตเอาออกในตอนกลางวัน</span>
-            </div>
-            <div class="role-info-item" style="border-color:rgba(167,139,250,0.25); background: rgba(167,139,250,0.05)">
-              <span class="role-info-icon">🔮</span>
-              <span class="role-info-name" style="color:#c4b5fd">หมอดู</span>
-              <span class="role-info-desc">เปิดเผยบทบาทที่แท้จริงของผู้เล่นหนึ่งคนในแต่ละคืน (เฉพาะตัวเอง)</span>
-            </div>
-            <div class="role-info-item" style="border-color:rgba(16,185,129,0.25); background: rgba(16,185,129,0.05)">
-              <span class="role-info-icon">💉</span>
-              <span class="role-info-name" style="color:#6ee7b7">แพทย์</span>
-              <span class="role-info-desc">ปกป้องผู้เล่นหนึ่งคนต่อคืนจากการโจมตี สามารถปกป้องตัวเองได้หนึ่งครั้ง</span>
-            </div>
+          <p class="lobby-section-title"><span>🃏</span> การ์ดที่อยู่ในเกมตานี้</p>
+          <div id="public-role-deck" class="role-info-grid">
+             <div class="text-center w-100" style="color: rgba(255,255,255,0.5); padding: 20px;">รอ GM จัดไพ่...</div>
           </div>
         </div>
 
