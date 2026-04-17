@@ -1,6 +1,6 @@
 // Firebase configuration — reusing the spyfall-6bd7a project
 // Werewolf data is stored under /werewolf/ path prefix to avoid collision
-export const firebaseConfig = {
+export const FIREBASE_CONFIG = {
   apiKey: "AIzaSyCnlnRvRKF6LkNPhxFFCsK9clOMoXbJelQ",
   authDomain: "werewolf-3549d.firebaseapp.com",
   databaseURL: "https://werewolf-3549d-default-rtdb.asia-southeast1.firebasedatabase.app",

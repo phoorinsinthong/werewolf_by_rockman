@@ -86,8 +86,11 @@ async function tryReconnect() {
         const nameEl = banner.querySelector("#reconnect-room-code");
         if (nameEl) nameEl.textContent = saved.roomId;
       }
+      showView("home"); // Show home with reconnect banner
+      return;
     }
   } catch (_) {}
+  showView("home"); // Show home by default
 }
 
 // ─── Home Events ───────────────────────────────────────────────────────────────

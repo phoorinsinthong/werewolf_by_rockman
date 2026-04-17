@@ -12,7 +12,7 @@ import {
   gmAnnounceNightResult, announceWinner, resolveNight,
 } from "./game.js";
 import { renderVoting, castVote, resetVoteSelection, resolveVotes, gmSkipVote} from "./voting.js";
-import { initChatIfNeeded, subscribeToChat, setActiveChatTab } from "./chat.js";
+import { initChat, setActiveChatTab } from "./chat.js";
 
 let unsubRoom = null;
 
@@ -149,7 +149,7 @@ export function subscribeToRoom() {
         renderLobby(roomData);
       } else if (status === "playing") {
         showView("game");
-        initChatIfNeeded();
+        initChat();
         renderGameScreen(roomData);
         if (roomData.timerEnd && phase !== "night-done") {
           startPhaseTimer(roomData.timerEnd, phase);
