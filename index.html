@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>มนุษย์หมาป่า — เกมสังคมสุดมันส์</title>
+  <meta name="description" content="เกมมนุษย์หมาป่าออนไลน์สุดมันส์! สร้างห้องหรือเข้าร่วมกับเพื่อน รับบทบาทลับ และเอาชีวิตรอดจากคืนอันมืดหม่น!">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐺</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800;900&family=Sarabun:wght@300;400;500;600;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Ambient Background -->
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+  <div class="bg-orb bg-orb-3"></div>
+  <div class="bg-stars" id="bg-stars"></div>
+
+  <!-- Loading Overlay -->
+  <div id="loading-overlay">
+    <div class="loading-wolf">🐺</div>
+    <div class="spinner-ring"></div>
+    <span class="loading-text">กำลังเชื่อมต่อหมู่บ้าน...</span>
+  </div>
+
+  <!-- Reconnect Banner -->
+  <div id="reconnect-banner" class="hidden">
+    <div class="reconnect-icon">🔄</div>
+    <p>คุณเคยอยู่ในห้อง <strong id="reconnect-room">------</strong></p>
+    <p class="reconnect-sub">ต้องการกลับเข้าร่วมอีกครั้งไหม?</p>
+    <div class="reconnect-actions">
+      <button id="btn-reconnect" class="btn btn-primary btn-sm">🔄 กลับเข้าห้อง</button>
+      <button id="btn-reconnect-cancel" class="btn btn-ghost btn-sm">ปิด</button>
+    </div>
+  </div>
+
+  <!-- Leave Modal (Lobby) -->
+  <div id="leave-modal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-icon">🚪</div>
+      <h3>ออกจากห้อง?</h3>
+      <p>แน่ใจหรือไม่? หากคุณเป็นโฮสต์ ระบบจะโอนตำแหน่งให้ผู้เล่นคนอื่น</p>
+      <div class="modal-actions">
+        <button id="btn-leave-confirm" class="btn btn-danger btn-sm">ออกจากห้อง</button>
+        <button id="btn-leave-cancel" class="btn btn-secondary btn-sm">อยู่ต่อ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leave Modal (Game) -->
+  <div id="leave-modal-game" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-icon">⚠️</div>
+      <h3>ออกจากเกม?</h3>
+      <p>การออกกลางคันจะทำให้คุณหายไปจากเกมนี้อย่างถาวร แน่ใจแล้วหรือ?</p>
+      <div class="modal-actions">
+        <button id="btn-leave-game-confirm" class="btn btn-danger btn-sm">ออก</button>
+        <button id="btn-leave-game-cancel" class="btn btn-secondary btn-sm">เล่นต่อ</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="app">
+
+    <!-- ================================================================== -->
+    <!--  VIEW: HOME                                                         -->
+    <!-- ================================================================== -->
+    <div id="view-home" class="view hidden">
+      <div class="home-hero">
+        <div class="home-wolf-container">
+          <span class="home-wolf-icon">🐺</span>
+          <div class="home-wolf-glow"></div>
+        </div>
+        <h1 class="home-logo">มนุษย์หมาป่า</h1>
+        <p class="home-subtitle">Ultimate Extreme</p>
+        <p class="home-tagline">🎮 เกมสังคมออนไลน์แบบเรียลไทม์ · รองรับสูงสุด 16 คน</p>
+      </div>
+
+      <div class="glass-card home-card">
+        <div id="home-error" class="hidden"></div>
+
+        <div class="input-group">
+          <label for="player-name-input">
+            <span class="label-icon">👤</span> ชื่อผู้เล่น
+          </label>
+          <input
+            type="text"
+            id="player-name-input"
+            class="input-field"
+            placeholder="ใส่ชื่อของคุณ..."
+            maxlength="18"
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </div>
+
+        <button id="btn-create-room" class="btn btn-primary">
+          <span class="btn-icon">✨</span> สร้างห้องใหม่
+        </button>
+
+        <div class="home-divider">หรือเข้าร่วมห้องที่มีอยู่</div>
+
+        <div class="input-group">
+          <label for="room-code-input">
+            <span class="label-icon">🔑</span> รหัสห้อง
+          </label>
+          <input
+            type="text"
+            id="room-code-input"
+            class="input-field input-code"
+            placeholder="ABCD12"
+            maxlength="8"
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </div>
+
+        <button id="btn-join-room" class="btn btn-secondary">
+          <span class="btn-icon">🤝</span> เข้าร่วมห้อง
+        </button>
+      </div>
+
+      <!-- Quick role reference on home -->
+      <div class="role-preview-section">
+        <p class="role-preview-title">บทบาทในเกม</p>
+        <div class="role-preview-grid">
+          <div class="role-preview-item role-wolf">
+            <span class="rp-icon">🐺</span>
+            <span class="rp-name">มนุษย์หมาป่า</span>
+            <span class="rp-desc">ล่าเหยื่อทุกคืน ชนะเมื่อมีจำนวนเท่ากับชาวบ้าน</span>
+          </div>
+          <div class="role-preview-item role-villager">
+            <span class="rp-icon">🏘️</span>
+            <span class="rp-name">ชาวบ้าน</span>
+            <span class="rp-desc">ไม่มีพลังพิเศษ ช่วยกันหาและโหวตไล่หมาป่าออก</span>
+          </div>
+          <div class="role-preview-item role-seer">
+            <span class="rp-icon">🔮</span>
+            <span class="rp-name">หมอดู</span>
+            <span class="rp-desc">เปิดเผยบทบาทของผู้เล่นหนึ่งคนในแต่ละคืน</span>
+          </div>
+          <div class="role-preview-item role-doctor">
+            <span class="rp-icon">💉</span>
+            <span class="rp-name">แพทย์</span>
+            <span class="rp-desc">ปกป้องผู้เล่นหนึ่งคนจากการโจมตีของหมาป่าในแต่ละคืน</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!--  VIEW: LOBBY                                                        -->
+    <!-- ================================================================== -->
+    <div id="view-lobby" class="view hidden">
+      <div class="lobby-header">
+        <h2 class="text-gradient">ห้องรอ</h2>
+        <div class="room-code-pill" title="คลิกเพื่อคัดลอกรหัสห้อง">
+          <span class="code-label">รหัส</span>
+          <span id="display-room-code">------</span>
+          <button class="copy-code-btn" title="คัดลอก">📋</button>
+        </div>
+        <button id="btn-leave-room" class="btn btn-ghost btn-sm">🚪 ออก</button>
+      </div>
+
+      <div class="lobby-body">
+
+        <!-- Player list -->
+        <div class="glass-card lobby-section-card">
+          <div class="lobby-section-header">
+            <p class="lobby-section-title">
+              <span>👥</span> ผู้เล่น
+            </p>
+            <span id="lobby-player-count" class="player-count-badge">0 / 16</span>
+          </div>
+          <div id="lobby-player-list"></div>
+          <button id="btn-ready" class="btn btn-secondary mt-3">
+            <span class="front">✅ พร้อมแล้ว!</span>
+          </button>
+        </div>
+
+        <!-- Host controls -->
+        <div id="host-controls" class="glass-card lobby-section-card host-controls-card hidden">
+          <p class="lobby-section-title"><span>👑</span> ควบคุมโฮสต์</p>
+          <p class="host-hint">ผู้เล่นต้องกด "พร้อม" ทุกคน และต้องมีอย่างน้อย 4 คน</p>
+          <button id="btn-start-game" class="btn btn-primary" disabled>
+            <span class="front">🐺 เริ่มเกม (ต้องการ 4 คน)</span>
+          </button>
+        </div>
+
+        <!-- Role info -->
+        <div class="glass-card lobby-section-card">
+          <p class="lobby-section-title"><span>🎭</span> บทบาทในเกมนี้</p>
+          <div class="role-info-grid">
+            <div class="role-info-item" style="border-color:rgba(220,38,38,0.25); background: rgba(220,38,38,0.05)">
+              <span class="role-info-icon">🐺</span>
+              <span class="role-info-name" style="color:#f87171">มนุษย์หมาป่า</span>
+              <span class="role-info-desc">ฆ่าชาวบ้านหนึ่งคนในแต่ละคืน ชนะเมื่อมีจำนวนเท่ากับฝ่ายชาวบ้าน</span>
+            </div>
+            <div class="role-info-item" style="border-color:rgba(251,191,36,0.25); background: rgba(251,191,36,0.05)">
+              <span class="role-info-icon">🏘️</span>
+              <span class="role-info-name" style="color:#fde68a">ชาวบ้าน</span>
+              <span class="role-info-desc">ไม่มีพลังพิเศษ ร่วมกันหาหมาป่าและโหวตเอาออกในตอนกลางวัน</span>
+            </div>
+            <div class="role-info-item" style="border-color:rgba(167,139,250,0.25); background: rgba(167,139,250,0.05)">
+              <span class="role-info-icon">🔮</span>
+              <span class="role-info-name" style="color:#c4b5fd">หมอดู</span>
+              <span class="role-info-desc">เปิดเผยบทบาทที่แท้จริงของผู้เล่นหนึ่งคนในแต่ละคืน (เฉพาะตัวเอง)</span>
+            </div>
+            <div class="role-info-item" style="border-color:rgba(16,185,129,0.25); background: rgba(16,185,129,0.05)">
+              <span class="role-info-icon">💉</span>
+              <span class="role-info-name" style="color:#6ee7b7">แพทย์</span>
+              <span class="role-info-desc">ปกป้องผู้เล่นหนึ่งคนต่อคืนจากการโจมตี สามารถปกป้องตัวเองได้หนึ่งครั้ง</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!--  VIEW: GAME                                                         -->
+    <!-- ================================================================== -->
+    <div id="view-game" class="view hidden">
+
+      <!-- Game Header -->
+      <div class="game-header">
+        <button id="btn-leave-game" class="btn btn-ghost btn-sm">🚪 ออก</button>
+        <div id="phase-banner" class="phase-banner phase-night" style="flex:1;margin:0 12px;background:transparent;border:none;padding:4px 0">
+          <span class="phase-icon">🌙</span>
+          <span class="phase-label">คืนที่ 1</span>
+        </div>
+        <div class="phase-timer-wrap">
+          <span class="timer-icon">⏱</span>
+          <span id="phase-timer">01:00</span>
+        </div>
+      </div>
+
+      <!-- Elimination Banner (fixed top) -->
+      <div id="elimination-banner" class="hidden"></div>
+
+      <!-- Game Body: Main + Sidebar -->
+      <div class="game-body">
+
+        <!-- MAIN PANEL -->
+        <div class="game-main">
+
+          <!-- Role Card -->
+          <div class="role-card glass-card" id="role-card" style="--role-color:#7c3aed">
+            <div class="role-card-glow"></div>
+            <div class="role-card-header">
+              <div class="role-icon-wrap">
+                <span id="role-icon">❓</span>
+              </div>
+              <div class="role-card-info">
+                <div class="role-card-label">บทบาทของคุณ</div>
+                <h3 id="role-name">กำลังโหลด...</h3>
+                <p id="role-desc">กำลังกำหนดบทบาท...</p>
+              </div>
+            </div>
+            <div id="wolf-allies" class="hidden"></div>
+          </div>
+
+          <!-- Seer result -->
+          <div id="seer-result" class="hidden"></div>
+
+          <!-- NIGHT PANEL -->
+          <div id="night-panel" class="glass-card action-panel" style="display:none">
+            <div class="night-waiting">
+              <div class="moon-anim">🌙</div>
+              <p>กลางคืนมาแล้ว... รอการกระทำ</p>
+            </div>
+          </div>
+
+          <!-- DAY PANEL -->
+          <div id="day-panel" class="glass-card action-panel" style="display:none">
+            <div class="day-instructions">
+              <div class="day-sun-icon">☀️</div>
+              <h4>ช่วงกลางวัน — พูดคุยและค้นหาหมาป่า!</h4>
+              <p>พูดคุยในแชท โหวตเริ่มเมื่อเวลาหมดหรือโฮสต์กด "เริ่มโหวต"</p>
+            </div>
+            <button id="host-start-vote" class="btn btn-danger btn-sm mt-3 hidden">
+              🗳️ เริ่มโหวตเลย (โฮสต์)
+            </button>
+          </div>
+
+          <!-- VOTE PANEL -->
+          <div id="vote-panel" class="glass-card action-panel" style="display:none">
+            <div class="vote-panel-inner" style="padding:0">
+              <div class="vote-header">
+                <h3>🗳️ ใครคือมนุษย์หมาป่า?</h3>
+                <span id="vote-progress" class="vote-progress-text">0 / 0 คนโหวตแล้ว</span>
+              </div>
+              <div id="vote-grid" class="vote-grid"></div>
+              <div class="vote-actions">
+                <button id="btn-submit-vote" class="btn btn-danger mt-3" disabled>
+                  <span class="front">ยืนยันการโหวต</span>
+                </button>
+                <button id="btn-force-resolve" class="btn btn-ghost btn-sm mt-2 hidden">
+                  ⚡ บังคับประมวลผล (โฮสต์)
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- SIDEBAR: Players + Chat -->
+        <div class="game-sidebar">
+
+          <!-- Players List -->
+          <div class="game-player-list">
+            <h4>👥 ผู้เล่น</h4>
+            <div id="game-player-list"></div>
+          </div>
+
+          <!-- Chat -->
+          <div class="chat-sidebar">
+            <div class="chat-tabs">
+              <button id="chat-tab-global" class="chat-tab active">☀️ ทั่วไป</button>
+              <button id="chat-tab-wolf" class="chat-tab hidden">🐺 หมาป่า</button>
+              <button id="chat-tab-dead" class="chat-tab hidden">💀 ผีสิง</button>
+            </div>
+            <div id="chat-messages" class="chat-messages">
+              <div class="chat-empty">🌙 คืนมาแล้ว... เงียบๆ ไว้นะ</div>
+            </div>
+            <div class="chat-input-area">
+              <input type="text" id="chat-input" placeholder="พิมพ์ข้อความ..." maxlength="200" autocomplete="off">
+              <button id="btn-send-chat">ส่ง</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!--  VIEW: RESULT                                                       -->
+    <!-- ================================================================== -->
+    <div id="view-result" class="view hidden">
+
+      <!-- Winner Banner -->
+      <div class="result-banner result-villager" id="result-banner">
+        <div class="result-confetti" id="result-confetti"></div>
+        <span class="result-icon">🏘️</span>
+        <h1 class="result-title">ชาวบ้านชนะ!</h1>
+        <p class="result-subtitle">หมู่บ้านปลอดภัยแล้ว! หมาป่าทุกตัวถูกจับได้</p>
+      </div>
+
+      <!-- Role Reveal List -->
+      <h3 class="result-reveal-title">เปิดเผยบทบาทสุดท้าย</h3>
+      <div id="result-role-list" class="result-role-list"></div>
+
+      <!-- Action Buttons -->
+      <div class="result-actions">
+        <button id="btn-play-again" class="btn btn-primary hidden">🔄 เล่นอีกครั้ง</button>
+        <button id="btn-result-home" class="btn btn-secondary">🏠 ออกจากห้อง</button>
+      </div>
+
+    </div>
+
+  </div><!-- #app -->
+
+  <script type="module" src="js/app.js"></script>
+
+  <script>
+    // Generate background stars
+    window.addEventListener('DOMContentLoaded', () => {
+      const stars = document.getElementById('bg-stars');
+      if (stars) {
+        for (let i = 0; i < 80; i++) {
+          const s = document.createElement('div');
+          s.className = 'star';
+          s.style.cssText = `left:${Math.random()*100}%;top:${Math.random()*100}%;width:${Math.random()*2+1}px;height:${Math.random()*2+1}px;animation-delay:${Math.random()*4}s;animation-duration:${Math.random()*3+2}s`;
+          stars.appendChild(s);
+        }
+      }
+    });
+  </script>
+</body>
+</html>
