@@ -29,11 +29,11 @@
   <!-- Reconnect Banner -->
   <div id="reconnect-banner" class="hidden">
     <div class="reconnect-icon">🔄</div>
-    <p>คุณเคยอยู่ในห้อง <strong id="reconnect-room">------</strong></p>
+    <p>คุณเคยอยู่ในห้อง <strong id="reconnect-room-code">------</strong></p>
     <p class="reconnect-sub">ต้องการกลับเข้าร่วมอีกครั้งไหม?</p>
     <div class="reconnect-actions">
-      <button id="btn-reconnect" class="btn btn-primary btn-sm">🔄 กลับเข้าห้อง</button>
-      <button id="btn-reconnect-cancel" class="btn btn-ghost btn-sm">ปิด</button>
+      <button id="btn-reconnect-yes" class="btn btn-primary btn-sm">🔄 กลับเข้าห้อง</button>
+      <button id="btn-reconnect-no" class="btn btn-ghost btn-sm">ปิด</button>
     </div>
   </div>
 
@@ -183,10 +183,10 @@
 
         <!-- Host controls -->
         <div id="host-controls" class="glass-card lobby-section-card host-controls-card hidden">
-          <p class="lobby-section-title"><span>👑</span> ควบคุมโฮสต์</p>
-          <p class="host-hint">ผู้เล่นต้องกด "พร้อม" ทุกคน และต้องมีอย่างน้อย 4 คน</p>
+          <p class="lobby-section-title"><span>🎭</span> ควบคุมผู้ดำเนินเกม</p>
+          <p class="host-hint">ผู้เล่นต้องกด "พร้อม" ทุกคน และต้องมีผู้เล่นอย่างน้อย 4 คน (ไม่นับ GM)</p>
           <button id="btn-start-game" class="btn btn-primary" disabled>
-            <span class="front">🐺 เริ่มเกม (ต้องการ 4 คน)</span>
+            <span class="front">🎭 เริ่มเกม (ต้องการ 4 คน)</span>
           </button>
         </div>
 
@@ -288,7 +288,7 @@
 
           <!-- VOTE PANEL -->
           <div id="vote-panel" class="glass-card action-panel" style="display:none">
-            <div class="vote-panel-inner" style="padding:0">
+            <div style="padding:18px">
               <div class="vote-header">
                 <h3>🗳️ ใครคือมนุษย์หมาป่า?</h3>
                 <span id="vote-progress" class="vote-progress-text">0 / 0 คนโหวตแล้ว</span>
@@ -298,12 +298,107 @@
                 <button id="btn-submit-vote" class="btn btn-danger mt-3" disabled>
                   <span class="front">ยืนยันการโหวต</span>
                 </button>
-                <button id="btn-force-resolve" class="btn btn-ghost btn-sm mt-2 hidden">
-                  ⚡ บังคับประมวลผล (โฮสต์)
-                </button>
               </div>
             </div>
           </div>
+
+          <div id="standby-panel" class="glass-card action-panel" style="display:none">
+            <div class="standby-waiting">
+              <div class="standby-icon">🎭</div>
+              <p id="standby-msg">รอผู้ดำเนินเกมเริ่มรอบต่อไป...</p>
+              <p class="standby-sub">ผู้ดำเนินเกมจะเป็นผู้กำหนดเฟสถัดไป</p>
+            </div>
+          </div>
+
+          <!-- GM MAIN PANEL (host/GM only) -->
+          <div id="gm-main-panel" style="display:none;flex-direction:column;gap:14px">
+
+            <!-- GM Identity -->
+            <div class="gm-identity glass-card">
+              <div class="gm-identity-icon">🎭</div>
+              <div>
+                <h3 class="gm-title">ผู้ดำเนินเกม</h3>
+                <p class="gm-subtitle">คุณมองเห็นบทบาทผู้เล่นทุกคน และควบคุมทุกเฟส</p>
+              </div>
+            </div>
+
+            <!-- Role Table -->
+            <div class="glass-card gm-card">
+              <div class="gm-card-title"><span>📋</span> บทบาทผู้เล่น</div>
+              <div id="gm-role-table"></div>
+            </div>
+
+            <!-- Night Result (visible when phase=night-done) -->
+            <div id="gm-night-result" class="glass-card gm-card" style="display:none">
+              <div class="gm-card-title"><span>🌙</span> ผลกลางคืน (เฉพาะ GM เห็น)</div>
+              <div id="gm-night-result-content"></div>
+              <button id="gm-btn-announce-night" class="btn btn-primary mt-3">
+                <span class="front">☀️ ประกาศผลและเข้าสู่กลางวัน</span>
+              </button>
+            </div>
+
+            <!-- Vote Tally (visible when phase=voting) -->
+            <div id="gm-vote-section" class="glass-card gm-card" style="display:none">
+              <div class="gm-card-title"><span>🗳️</span> ผลการโหวต (เรียลไทม์)</div>
+              <div id="gm-vote-tally"></div>
+              <div class="gm-vote-actions">
+                <button id="gm-btn-approve-vote" class="btn btn-danger mt-3">
+                  <span class="front">⚖️ อนุมัติและประกาศผลโหวต</span>
+                </button>
+                <button id="gm-btn-skip-vote" class="btn btn-ghost btn-sm" style="margin-top:8px">
+                  ข้ามรอบโหวต (ไม่กำจัดใคร)
+                </button>
+              </div>
+            </div>
+
+            <!-- Phase Control Card -->
+            <div class="glass-card gm-card">
+              <div class="gm-card-title"><span>🎮</span> ควบคุมเฟสเกม</div>
+
+              <!-- STANDBY: start night -->
+              <div id="gm-ctrl-standby" style="display:none">
+                <button id="gm-btn-to-night" class="btn gm-btn-night">
+                  🌙 เริ่มกลางคืน
+                </button>
+              </div>
+
+              <!-- NIGHT: waiting for actions / force resolve -->
+              <div id="gm-ctrl-night" style="display:none">
+                <div class="gm-waiting-text">🌙 รอผู้เล่นส่งการกระทำ...</div>
+                <button id="gm-btn-force-night" class="btn btn-ghost btn-sm" style="margin-top:12px">
+                  ⚡ บังคับสรุปคืน (ข้ามผู้ที่ไม่กระทำ)
+                </button>
+              </div>
+
+              <!-- NIGHT-DONE: prompt GM to announce -->
+              <div id="gm-ctrl-nightdone" style="display:none">
+                <div class="gm-waiting-text">✅ ผลกลางคืนพร้อมแล้ว — กดประกาศด้านบน</div>
+              </div>
+
+              <!-- DAY: start voting -->
+              <div id="gm-ctrl-day" style="display:none">
+                <div class="gm-waiting-text">☀️ ผู้เล่นกำลังพูดคุย...</div>
+                <button id="gm-btn-to-vote" class="btn gm-btn-vote" style="margin-top:12px">
+                  🗳️ เริ่มโหวต!
+                </button>
+              </div>
+
+              <!-- VOTING: waiting for players -->
+              <div id="gm-ctrl-voting" style="display:none">
+                <div class="gm-waiting-text">🗳️ รอผู้เล่นโหวต... กด อนุมัติ เมื่อพร้อม</div>
+              </div>
+
+              <!-- Force winner -->
+              <div class="gm-winner-section">
+                <div class="gm-winner-label">🏆 ประกาศผู้ชนะ (บังคับ)</div>
+                <div class="gm-winner-buttons">
+                  <button id="gm-btn-winner-v" class="btn btn-secondary btn-sm">🏘️ ชาวบ้านชนะ</button>
+                  <button id="gm-btn-winner-w" class="btn btn-danger btn-sm">🐺 หมาป่าชนะ</button>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- #gm-main-panel -->
 
         </div>
 
@@ -355,8 +450,8 @@
 
       <!-- Action Buttons -->
       <div class="result-actions">
-        <button id="btn-play-again" class="btn btn-primary hidden">🔄 เล่นอีกครั้ง</button>
-        <button id="btn-result-home" class="btn btn-secondary">🏠 ออกจากห้อง</button>
+        <button id="btn-reset-lobby" class="btn btn-primary hidden">🔄 เล่นอีกครั้ง</button>
+        <button id="btn-leave-result" class="btn btn-secondary">🏠 ออกจากห้อง</button>
       </div>
 
     </div>
