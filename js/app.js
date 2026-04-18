@@ -253,6 +253,12 @@ function bindGMEvents() {
     if (!STATE.isHost) return;
     if (confirm("ประกาศ หมาป่าชนะ — แน่ใจหรือ?")) await announceWinner("werewolf");
   });
+
+  // Announce winner – independent
+  document.getElementById("gm-btn-winner-i")?.addEventListener("click", async () => {
+    if (!STATE.isHost) return;
+    if (confirm("ประกาศ ฝ่ายอิสระชนะ — แน่ใจหรือ?")) await announceWinner("independent");
+  });
 }
 
 // ─── Result Events ─────────────────────────────────────────────────────────────

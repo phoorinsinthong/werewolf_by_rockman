@@ -63,6 +63,12 @@
     </div>
   </div>
 
+  <!-- Elimination VFX Overlay -->
+  <div id="fx-elimination" class="fx-overlay hidden">
+    <div class="fx-blood"></div>
+    <div class="fx-text" id="fx-elimination-text"></div>
+  </div>
+
   <div id="app">
 
     <!-- ================================================================== -->
@@ -238,19 +244,29 @@
         <div class="game-main">
 
           <!-- Role Card -->
-          <div class="role-card glass-card" id="role-card" style="--role-color:#7c3aed">
-            <div class="role-card-glow"></div>
-            <div class="role-card-header">
-              <div class="role-icon-wrap">
-                <span id="role-icon">❓</span>
+          <div class="role-card-container" id="role-card-container">
+            <div class="role-card glass-card" id="role-card" style="--role-color:#7c3aed">
+              <!-- Back of card (seen first before flip) -->
+              <div class="role-card-back">
+                <div class="role-back-icon">🐺</div>
+                <div class="role-back-text">ไพ่ของคุณ</div>
               </div>
-              <div class="role-card-info">
-                <div class="role-card-label">บทบาทของคุณ</div>
-                <h3 id="role-name">กำลังโหลด...</h3>
-                <p id="role-desc">กำลังกำหนดบทบาท...</p>
+              <!-- Front of card (actual role) -->
+              <div class="role-card-front">
+                <div class="role-card-glow"></div>
+                <div class="role-card-header">
+                  <div class="role-icon-wrap">
+                    <span id="role-icon">❓</span>
+                  </div>
+                  <div class="role-card-info">
+                    <div class="role-card-label">บทบาทของคุณ</div>
+                    <h3 id="role-name">กำลังโหลด...</h3>
+                    <p id="role-desc">กำลังกำหนดบทบาท...</p>
+                  </div>
+                </div>
+                <div id="wolf-allies" class="hidden"></div>
               </div>
             </div>
-            <div id="wolf-allies" class="hidden"></div>
           </div>
 
           <!-- Seer result -->
@@ -381,9 +397,10 @@
               <!-- Force winner -->
               <div class="gm-winner-section">
                 <div class="gm-winner-label">🏆 ประกาศผู้ชนะ (บังคับ)</div>
-                <div class="gm-winner-buttons">
-                  <button id="gm-btn-winner-v" class="btn btn-secondary btn-sm">🏘️ ชาวบ้านชนะ</button>
-                  <button id="gm-btn-winner-w" class="btn btn-danger btn-sm">🐺 หมาป่าชนะ</button>
+                <div class="gm-winner-buttons" style="display:flex; gap:8px;">
+                  <button id="gm-btn-winner-v" class="btn btn-secondary btn-sm">🏘️ ชาวบ้าน</button>
+                  <button id="gm-btn-winner-w" class="btn btn-danger btn-sm">🐺 หมาป่า</button>
+                  <button id="gm-btn-winner-i" class="btn btn-ghost btn-sm">🎭 อิสระ</button>
                 </div>
               </div>
             </div>

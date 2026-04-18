@@ -274,22 +274,38 @@ function renderLobby(roomData) {
 
   // Render GM Deck Controls
   if (STATE.isHost) {
-    const deckSetupHtml = Object.keys(ROLES).filter(r => r !== "gm").map(rKey => {
-      const info = ROLES[rKey];
-      const count = counts[rKey] || 0;
-      return `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(0,0,0,0.15); border-radius:6px; margin-bottom:6px;">
-          <div>
-            <span style="font-size:1.2em; margin-right:8px;">${info.icon}</span>
-            <span style="color:${info.color}; font-weight:600;">${info.name}</span>
-          </div>
-          <div style="display:flex; align-items:center; gap:12px;">
-            <button class="btn btn-ghost" style="padding:2px 10px; font-size:1.2em; min-width:32px" onclick="window._updateDeckCount('${rKey}', -1)">-</button>
-            <span style="font-weight:bold; font-size:1.1em; width:20px; text-align:center">${count}</span>
-            <button class="btn btn-ghost" style="padding:2px 10px; font-size:1.2em; min-width:32px" onclick="window._updateDeckCount('${rKey}', 1)">+</button>
-          </div>
-        </div>`;
-    }).join("");
+    const categories = {
+      villager: "ฝ่ายชาวบ้าน",
+      werewolf: "ฝ่ายหมาป่า",
+      independent: "อิสระ/อื่นๆ"
+    };
+    
+    let deckSetupHtml = `<div style="display:flex; flex-direction:column; gap:16px;">`;
+    
+    for (const [teamKey, teamName] of Object.entries(categories)) {
+      deckSetupHtml += `<div><h5 style="color:var(--text-muted); margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;">${teamName}</h5><div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:8px;">`;
+      
+      const teamRoles = Object.keys(ROLES).filter(r => ROLES[r].team === teamKey);
+      teamRoles.forEach(rKey => {
+        const info = ROLES[rKey];
+        const count = counts[rKey] || 0;
+        deckSetupHtml += `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; background:rgba(0,0,0,0.15); border-radius:6px; border-left: 3px solid ${info.color}80;">
+            <div style="display:flex; align-items:center; overflow:hidden;" title="${info.description}">
+              <span style="font-size:1.1em; margin-right:6px;">${info.icon}</span>
+              <span style="color:${info.color}; font-weight:600; font-size:0.9em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${info.name}</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:4px;">
+              <button class="btn btn-ghost" style="padding:2px 8px; font-size:1.1em;" onclick="window._updateDeckCount('${rKey}', -1)">-</button>
+              <span style="font-weight:bold; font-size:1em; width:16px; text-align:center">${count}</span>
+              <button class="btn btn-ghost" style="padding:2px 8px; font-size:1.1em;" onclick="window._updateDeckCount('${rKey}', 1)">+</button>
+            </div>
+          </div>`;
+      });
+      deckSetupHtml += `</div></div>`;
+    }
+    deckSetupHtml += `</div>`;
+    
     const setupContainer = document.getElementById("gm-deck-setup");
     if (setupContainer) setupContainer.innerHTML = deckSetupHtml;
   }
@@ -392,6 +408,9 @@ function updatePhaseBanner(phase, dayCount) {
   const labelEl = banner.querySelector(".phase-label");
   if (iconEl)  iconEl.textContent  = icon;
   if (labelEl) labelEl.textContent = label;
+
+  // Set phase for ambient sky transitions
+  document.body.setAttribute("data-phase", phase);
 }
 
 // ─── GM Panel Toggle ───────────────────────────────────────────────────────────
@@ -400,7 +419,7 @@ function showGMPanel() {
   document.getElementById("gm-main-panel")?.style.setProperty("display", "flex");
   document.getElementById("gm-main-panel")?.style.setProperty("flex-direction", "column");
   // Hide all player panels
-  ["role-card", "night-panel", "day-panel", "vote-panel", "standby-panel"].forEach(id => {
+  ["role-card-container", "night-panel", "day-panel", "vote-panel", "standby-panel"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = "none";
   });
@@ -427,8 +446,8 @@ function renderGMPanel(roomData) {
     const visible = phase === "night-done";
     nightCard.style.display = visible ? "block" : "none";
     if (visible) {
-      const result = roomData.nightActions?.result;
-      nightContent.innerHTML = buildNightResultHTML(result, players);
+      const actions = roomData.nightActions || {};
+      nightContent.innerHTML = buildNightResultHTML(actions, players);
     }
   }
 
@@ -457,75 +476,50 @@ function renderGMPanel(roomData) {
   });
 }
 
-function buildNightResultHTML(result, players) {
-  if (!result) return `<p style="color:var(--text-muted)">ไม่มีข้อมูลคืนนี้</p>`;
-
-  const getName = (id) => id ? escapeHtml(players[id]?.name || "?") : null;
-
-  const wolfName   = getName(result.wolfTarget) || "ไม่ได้โจมตี";
-  const doctorName = getName(result.doctorTarget) || "ไม่ได้ปกป้อง";
-  const witchHealName = result.witchType === "heal" ? getName(result.witchTarget) : null;
-  const witchPoisonName = result.witchType === "poison" ? getName(result.witchTarget) : null;
-
-  let killsHtml = "";
-  if (result.killedIds && result.killedIds.length > 0) {
-    killsHtml = result.killedIds.map(id => {
-      const p = players[id];
-      const roleName = p ? getRoleConfig(p.role)?.name : "?";
-      return `<div>${getName(id)} ถูกสังหาร (${roleName})</div>`;
-    }).join("");
-  } else {
-    killsHtml = "ไม่มีผู้เสียชีวิต";
+function buildNightResultHTML(actions, players) {
+  if (!actions || Object.keys(actions).filter(k => k.endsWith('Target')).length === 0) {
+    return `<p style="color:var(--text-muted)">ไม่มีกิจกรรมพิเศษในคืนนี้ หรือทุกคนเลือกข้ามสิทธิ์</p>`;
   }
 
-  let html = `
-    <div class="gm-night-item">
-      <span class="gm-night-icon">🐺</span>
-      <div>
-        <div class="gm-night-label">หมาป่าโจมตี</div>
-        <div class="gm-night-value">${wolfName}</div>
-      </div>
-    </div>
-    <div class="gm-night-item">
-      <span class="gm-night-icon">💉</span>
-      <div>
-        <div class="gm-night-label">แพทย์ปกป้อง</div>
-        <div class="gm-night-value">${doctorName}</div>
-      </div>
-    </div>`;
+  const getName = (id) => {
+    if (!id || id === 'skip') return null;
+    return escapeHtml(players[id]?.name || "?");
+  };
 
-  if (result.witchTarget) {
-     html += `
-    <div class="gm-night-item">
-      <span class="gm-night-icon">🧹</span>
-      <div>
-        <div class="gm-night-label">แม่มดใช้${result.witchType === 'heal' ? 'ยาชุบ' : 'ยาพิษ'}</div>
-        <div class="gm-night-value" style="color:${result.witchType === 'heal' ? '#10b981' : '#ef4444'}">${getName(result.witchTarget)}</div>
-      </div>
-    </div>`;
-  }
-
-  if (result.cupidTarget1 && result.cupidTarget2) {
-     html += `
-    <div class="gm-night-item">
-      <span class="gm-night-icon">💘</span>
-      <div>
-        <div class="gm-night-label">คิวปิดจับคู่</div>
-        <div class="gm-night-value">${getName(result.cupidTarget1)} และ ${getName(result.cupidTarget2)}</div>
-      </div>
-    </div>`;
-  }
-
-  const resultColor = result.killedIds && result.killedIds.length > 0 ? "#ef4444" : "#10b981";
+  let html = `<div style="display:flex; flex-direction:column; gap:8px;">`;
+  
+  Object.keys(ROLES).forEach(role => {
+    const targetId = actions[`${role}Target`];
+    const extra = actions[`${role}Extra`];
+    if (targetId && targetId !== 'skip') {
+      const cfg = ROLES[role];
+      const targetList = targetId.split(',').map(tid => getName(tid)).filter(n => n).join(" และ ");
+      
+      let extraStr = "";
+      if (role === 'witch') {
+        extraStr = ` <i>(ใช้ ${extra === 'heal' ? 'ยาชุบ' : 'ยาพิษ'})</i>`;
+      }
+      
+      html += `
+        <div class="gm-night-item" style="display:flex; align-items:center; gap:12px; background:rgba(255,255,255,0.05); padding:8px 12px; border-radius:8px; border-left:3px solid ${cfg.color}; margin-bottom:4px;">
+          <span style="font-size:1.5em">${cfg.icon}</span>
+          <div>
+            <div style="font-size:0.85em; color:var(--text-muted);">${cfg.name}</div>
+            <div style="font-weight:600; color:${cfg.color}">${targetList}${extraStr}</div>
+          </div>
+        </div>
+      `;
+    }
+  });
 
   html += `
-    <div class="gm-night-item" style="background:rgba(${result.killedIds && result.killedIds.length > 0 ? "239,68,68" : "16,185,129"},0.06);border-color:rgba(${result.killedIds && result.killedIds.length > 0 ? "239,68,68" : "16,185,129"},0.25)">
-      <span class="gm-night-icon">${result.killedIds && result.killedIds.length > 0 ? "💀" : "🛡️"}</span>
-      <div>
-        <div class="gm-night-label">ผลสรุปคืนนี้</div>
-        <div class="gm-night-value" style="color:${resultColor}">${killsHtml}</div>
-      </div>
-    </div>`;
+    <div style="margin-top:16px; padding:12px; background:rgba(239,68,68,0.1); border-radius:8px; border: 1px solid rgba(239,68,68,0.3);">
+      <h5 style="color:#ef4444; margin-bottom:8px; font-size:1em;">⚠️ การจัดการผู้ตาย (แบบแมนนวล)</h5>
+      <p style="font-size:0.8em; color:rgba(255,255,255,0.8); line-height:1.4;">
+        ระบบจะไม่หักลบคนตายให้อัตโนมัติในโหมด Extreme GM-Assisted ตอนนี้<br>
+        กรุณาอ่านรายงานด้านบน สรุปผลว่าใครตาย แล้วใช้ปุ่ม <b>"ฆ่า" / "ชุบ"</b> ในรายชื่อข้างล่างจัดการสถานะให้เรียบร้อย ก่อนกดเริ่มวันใหม่!
+      </p>
+    </div></div>`;
 
   return html;
 }
@@ -546,6 +540,7 @@ function renderGMRoleTable(players, hostId) {
         <div class="gm-role-avatar" style="background:${cfg.color}22;color:${cfg.color}">${p.name.charAt(0).toUpperCase()}</div>
         <div class="gm-player-name">${escapeHtml(p.name)} ${dead ? "💀" : ""}</div>
         <div class="gm-role-badge" style="border-color:${cfg.color};color:${cfg.color};background:${cfg.color}15">${cfg.icon} ${cfg.name}</div>
+        <button class="btn btn-ghost" style="padding:4px 8px; font-size:0.8em; margin-left:8px;" onclick="window._togglePlayerAlive('${id}', ${!dead})">${dead ? "ชุบ" : "ฆ่า"}</button>
       </div>`;
   }).join("");
 }
@@ -591,10 +586,17 @@ function renderGMVoteTally(roomData) {
 
 function renderPlayerGameView(phase, me, players, roomData) {
   // Role card
-  const roleCard = document.getElementById("role-card");
-  if (roleCard) {
-    roleCard.style.display = "block";
+  const roleCardContainer = document.getElementById("role-card-container");
+  if (roleCardContainer) {
+    roleCardContainer.style.display = "block";
     renderRoleCard(me, players, roomData.hostId);
+    
+    // Trigger 3D flip effect on first render
+    if (!roleCardContainer.classList.contains("highlight-flip")) {
+      setTimeout(() => {
+        roleCardContainer.classList.add("highlight-flip");
+      }, 500);
+    }
   }
 
   // Standby panel
@@ -649,16 +651,41 @@ function renderRoleCard(me, players, hostId) {
   if (nameEl) nameEl.textContent = cfg.name;
   if (descEl) descEl.textContent = cfg.description;
 
-  // Show wolf allies
+  // Additional Intelligence
   if (wolvesEl) {
-    if (me.role === "werewolf" || me.role === "minion") {
-      const allies = Object.entries(players)
-        .filter(([id, p]) => p.role === "werewolf" && id !== STATE.playerId && id !== hostId)
+    wolvesEl.classList.add("hidden");
+    const role = me.role;
+    let allies = [];
+    let allyLabel = "";
+    
+    if (["werewolf", "alpha_wolf", "dire_wolf", "lone_wolf", "mystic_wolf", "wolf_cub", "wolf_man", "minion", "idiot"].includes(role)) {
+      allies = Object.entries(players)
+        .filter(([id, p]) => ["werewolf", "alpha_wolf", "dire_wolf", "lone_wolf", "mystic_wolf", "wolf_cub", "wolf_man"].includes(p.role) && id !== STATE.playerId && id !== hostId)
         .map(([, p]) => p.name);
-      wolvesEl.classList.toggle("hidden", allies.length === 0);
-      if (allies.length) wolvesEl.textContent = `🐺 หมาป่า: ${allies.join(", ")}`;
-    } else {
-      wolvesEl.classList.add("hidden");
+      
+      if (allies.length) {
+        wolvesEl.classList.remove("hidden");
+        allyLabel = "🐺 หมาป่าที่อยู่ในฝูง";
+        if (role === "minion") allyLabel = "🐺 หมาป่าที่คุณต้องปกป้อง";
+        if (role === "idiot") allyLabel = "🐺 ฝูงหมาป่าในคืนแรก";
+        wolvesEl.textContent = `${allyLabel}: ${allies.join(", ")}`;
+      }
+    } else if (role === "mason") {
+      allies = Object.entries(players)
+        .filter(([id, p]) => p.role === "mason" && id !== STATE.playerId && id !== hostId)
+        .map(([, p]) => p.name);
+      if (allies.length) {
+        wolvesEl.classList.remove("hidden");
+        wolvesEl.innerHTML = `🧱 เพื่อนพรรคเดียวกัน: <b>${allies.join(", ")}</b>`;
+      }
+    } else if (role === "beholder") {
+      allies = Object.entries(players)
+        .filter(([id, p]) => p.role === "seer" && id !== STATE.playerId && id !== hostId)
+        .map(([, p]) => p.name);
+      if (allies.length) {
+        wolvesEl.classList.remove("hidden");
+        wolvesEl.innerHTML = `🔮 หมอดูตัวจริงคือ: <b>${allies.join(", ")}</b>`;
+      }
     }
   }
 }
@@ -670,19 +697,19 @@ function renderNightPanel(me, players) {
   if (!panel) return;
 
   if (!me?.isAlive) {
+    if (me?.role === "ghost" && STATE.roomData?.dayCount > 1) {
+      panel.innerHTML = `<div class="night-waiting" style="padding:16px"><div class="moon-anim">🌙</div><p>ส่งข้อความใบ้ 1 ตัวอักษรให้เพื่อนตอนเช้า</p><p style="font-size:0.8em;color:gray">GM ให้แจ้งข้อความในกล่องแชตได้ 1 อักษรครับ</p></div>`;
+      return;
+    }
     panel.innerHTML = `<div class="night-dead-msg">💀 คุณถูกตัดสิทธิ์แล้ว แต่ยังดูแลคุยได้ในช่อง "ผีสิง"</div>`;
     return;
   }
 
   const role = me.role;
-  const passiveRoles = ["villager", "hunter", "tanner", "minion"];
-  if (passiveRoles.includes(role)) {
-    panel.innerHTML = `<div class="night-waiting"><div class="moon-anim">🌙</div><p>รอให้คืนผ่านไป...</p><p style="color:var(--text-muted);font-size:0.84rem">คุณไม่ต้องทำอะไรในคืนนี้</p></div>`;
-    return;
-  }
+  const cfg = ROLES[role];
   
-  if (role === "cupid" && STATE.roomData?.dayCount > 1) {
-    panel.innerHTML = `<div class="night-waiting"><div class="moon-anim">🌙</div><p>รอให้คืนผ่านไป...</p><p style="color:var(--text-muted);font-size:0.84rem">คิวปิดจับคู่ได้แค่คืนกระแรกคุณไม่ต้องทำอะไรในคืนนี้แล้ว</p></div>`;
+  if (!cfg || cfg.actionPhase === "none" || (cfg.actionPhase === "firstNight" && STATE.roomData?.dayCount > 1)) {
+    panel.innerHTML = `<div class="night-waiting"><div class="moon-anim">🌙</div><p>รอให้คืนผ่านไป...</p><p style="color:var(--text-muted);font-size:0.84rem">คุณสมบัติแฝง หรือ คุณไม่ต้องทำอะไรในคืนนี้</p></div>`;
     return;
   }
 
@@ -692,21 +719,16 @@ function renderNightPanel(me, players) {
     return;
   }
 
-  const actionLabel = { 
-    werewolf: "🌙 เลือกเหยื่อของคุณ", 
-    seer: "🔮 เลือกคนที่ต้องการตรวจสอบ", 
-    doctor: "💉 เลือกคนที่ต้องการปกป้อง",
-    witch: "🧹 เลือกชุบชีวิต หรือ สาดพิษ (ใช้ได้คนละ 1 ครั้ง)",
-    sorcerer: "🧙‍♂️ เลือกหาตำแหน่งหมอดู",
-    cupid: "💘 เลือกคนเพื่อจับคู่ (คนเดียวไปก่อน)"
-  }[role] || "เลือกเป้าหมาย";
+  const actionLabel = `ลืมตามาปฏิบัติหน้าของคุณ (${cfg.name})`;
 
   const targets = Object.entries(players)
-    .filter(([id, p]) => p.isAlive && p.role !== "gm" && id !== STATE.playerId && (role !== "werewolf" || p.role !== "werewolf"));
+    .filter(([id, p]) => p.isAlive && p.role !== "gm" && id !== STATE.playerId && (cfg.team !== "werewolf" || !["werewolf", "alpha_wolf", "dire_wolf", "lone_wolf", "mystic_wolf", "wolf_cub", "wolf_man"].includes(p.role)));
+
+  let skipBtn = `<button class="btn btn-ghost mt-3 w-100" style="color:#d1d5db; border: 1px solid rgba(255,255,255,0.3)" onclick="window._nightAction('${role}', 'skip', this, 'skip')">ข้าม (ไม่ใช้พลัง)</button>`;
 
   panel.innerHTML = `
     <div class="night-action" style="padding:16px">
-      <p class="night-action-label">${actionLabel}</p>
+      <p class="night-action-label">${cfg.icon} ${actionLabel}</p>
       <div class="night-target-grid" id="night-target-grid">
         ${targets.length === 0
           ? `<p style="color:var(--text-muted);font-size:0.84rem;grid-column:1/-1;text-align:center">ไม่มีเป้าหมาย</p>`
@@ -719,8 +741,8 @@ function renderNightPanel(me, players) {
                     <span>${escapeHtml(p.name)}</span>
                   </div>
                   <div style="display:flex; gap:4px; width:100%; margin-top:4px;">
-                    <button style="flex:1; padding:4px; font-size:0.7em; background:#10b98120; border:1px solid #10b981; border-radius:4px; color:#10b981; cursor:pointer;" onclick="window._nightAction('${role}', '${id}', this.parentElement.parentElement, 'heal')">ชุบ</button>
-                    <button style="flex:1; padding:4px; font-size:0.7em; background:#ef444420; border:1px solid #ef4444; border-radius:4px; color:#ef4444; cursor:pointer;" onclick="window._nightAction('${role}', '${id}', this.parentElement.parentElement, 'poison')">ฆ่า</button>
+                    <button style="flex:1; padding:4px; font-size:0.7em; background:#10b98120; border:1px solid #10b981; border-radius:4px; color:#10b981; cursor:pointer;" onclick="window._nightAction('${role}', '${id}', this, 'heal')">ชุบ</button>
+                    <button style="flex:1; padding:4px; font-size:0.7em; background:#ef444420; border:1px solid #ef4444; border-radius:4px; color:#ef4444; cursor:pointer;" onclick="window._nightAction('${role}', '${id}', this, 'poison')">ฆ่า</button>
                   </div>
                 </div>`;
               } else {
@@ -732,6 +754,7 @@ function renderNightPanel(me, players) {
               }
           }).join("")}
       </div>
+      ${skipBtn}
     </div>`;
 }
 
@@ -797,21 +820,49 @@ function renderPlayerSidebar(players, hostId) {
 
 export function showEliminationBanner(elim) {
   const banner = document.getElementById("elimination-banner");
+  const fxOverlay = document.getElementById("fx-elimination");
+  const fxText = document.getElementById("fx-elimination-text");
+
   if (!banner) return;
   if (!elim) { banner.classList.add("hidden"); return; }
 
   let text = "";
+  let isKill = false;
+  let fxType = "";
+
   if (elim.reason === "protected")  text = "🛡️ แพทย์ช่วยเหลือ! ไม่มีใครตายในคืนนี้";
   else if (elim.reason === "no-action") text = "🌙 คืนอันเงียบสงัด... ไม่มีใครเสียชีวิต";
-  else if (elim.reason === "werewolf")  text = `🐺 ${elim.playerName} ถูกหมาป่าสังหาร! พวกเขาคือ ${getRoleConfig(elim.playerRole).name}`;
-  else if (elim.reason === "vote")      text = `🗳️ ${elim.playerName} ถูกโหวตไล่ออก! พวกเขาคือ ${getRoleConfig(elim.playerRole).name}`;
+  else if (elim.reason === "werewolf") {
+    text = `🐺 ${elim.playerName} ถูกหมาป่าสังหาร! พวกเขาคือ ${getRoleConfig(elim.playerRole).name}`;
+    isKill = true; fxType = "active-werewolf";
+  }
+  else if (elim.reason === "vote") {
+    text = `🗳️ ${elim.playerName} ถูกโหวตไล่ออก! พวกเขาคือ ${getRoleConfig(elim.playerRole).name}`;
+    isKill = true; fxType = "active-vote";
+  }
   else if (elim.reason === "tie")       text = "🗳️ โหวตเสมอ! ไม่มีผู้ถูกกำจัดในรอบนี้";
   else if (elim.reason === "skipped")   text = "🗳️ GM ข้ามรอบโหวต";
-  else text = elim.playerName ? `${elim.playerName} ถูกกำจัดออก` : "";
+  else {
+    text = elim.playerName ? `${elim.playerName} ถูกกำจัดออก` : "";
+    if (elim.playerName) { isKill = true; fxType = "active-vote"; }
+  }
 
   if (text) {
     banner.textContent = text;
     banner.classList.remove("hidden");
+    
+    if (isKill && fxOverlay && fxText) {
+      fxText.textContent = `${elim.playerName} ตาย!`;
+      fxOverlay.className = `fx-overlay ${fxType}`;
+      fxOverlay.classList.remove("hidden");
+      
+      // Delay dismissing the screen blocking effect
+      setTimeout(() => {
+        fxOverlay.classList.add("hidden");
+        fxOverlay.className = "fx-overlay hidden";
+      }, 4000);
+    }
+    
     setTimeout(() => banner.classList.add("hidden"), 6000);
   }
 }
@@ -828,11 +879,19 @@ function renderResult(roomData) {
     const iconEl     = banner.querySelector(".result-icon");
     const titleEl    = banner.querySelector(".result-title");
     const subEl      = banner.querySelector(".result-subtitle");
-    if (iconEl)  iconEl.textContent  = winner === "werewolf" ? "🐺" : "🏘️";
-    if (titleEl) titleEl.textContent = winner === "werewolf" ? "หมาป่าชนะ!" : "ชาวบ้านชนะ!";
-    if (subEl)   subEl.textContent   = winner === "werewolf"
-      ? "หมู่บ้านตกอยู่ในความมืด หมาป่าครองคืนแล้ว..."
-      : "หมู่บ้านปลอดภัยแล้ว! หมาป่าทุกตัวถูกจับได้หมด";
+    if (winner === "werewolf") {
+      if (iconEl)  iconEl.textContent  = "🐺";
+      if (titleEl) titleEl.textContent = "หมาป่าชนะ!";
+      if (subEl)   subEl.textContent   = "หมู่บ้านตกอยู่ในความมืด หมาป่าครองคืนแล้ว...";
+    } else if (winner === "villager") {
+      if (iconEl)  iconEl.textContent  = "🏘️";
+      if (titleEl) titleEl.textContent = "ชาวบ้านชนะ!";
+      if (subEl)   subEl.textContent   = "หมู่บ้านปลอดภัยแล้ว! หมาป่าทุกตัวถูกจับได้หมด";
+    } else {
+      if (iconEl)  iconEl.textContent  = "🎭";
+      if (titleEl) titleEl.textContent = "ผู้เล่นอิสระชนะ!";
+      if (subEl)   subEl.textContent   = "ฝ่ายอิสระบรรลุเป้าหมายการเอาชีวิตรอดของตนเอง!";
+    }
   }
 
   const revealList = document.getElementById("result-role-list");
@@ -859,12 +918,19 @@ function renderResult(roomData) {
   if (resetBtn) resetBtn.style.display = STATE.isHost ? "" : "none";
 }
 
-// ─── Kick Player ───────────────────────────────────────────────────────────────
+// ─── Kick / Kill Player ────────────────────────────────────────────────────────
 
 async function kickPlayer(playerId) {
   if (!STATE.isHost) return;
   await remove(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${playerId}`));
 }
+
+window._togglePlayerAlive = async function(id, isAliveCurrent) {
+  if (!STATE.isHost) return;
+  await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}`), {
+    isAlive: !isAliveCurrent
+  });
+};
 
 // ─── Ready Toggle ──────────────────────────────────────────────────────────────
 
@@ -934,14 +1000,52 @@ window._updateDeckCount = async function (role, change) {
   });
 };
 
+let selectedNightTargets = [];
 window._nightAction = async function (role, targetId, btnEl, extraData = null) {
+  const roleCfg = ROLES[role];
+  
+  if (targetId === "skip") {
+    selectedNightTargets = [];
+    document.querySelectorAll(".night-target-btn").forEach(b => { b.disabled = true; });
+    btnEl.innerHTML = `ข้ามแล้ว...`;
+    await submitNightAction(role, "skip", "skip");
+    const np = document.getElementById("night-panel");
+    if (np) np.innerHTML = `<div class="night-done"><span class="check-anim">✅</span><p>ส่งการกระทำแล้วรอ GM ประกาศ...</p></div>`;
+    return;
+  }
+
+  if (roleCfg.actionType === "target2") {
+     if (selectedNightTargets.includes(targetId)) return;
+     selectedNightTargets.push(targetId);
+     
+     if (btnEl.parentElement && btnEl.parentElement.classList.contains("witch-card")) {
+         btnEl.parentElement.classList.add("night-selected");
+     } else {
+         btnEl.classList.add("night-selected");
+     }
+
+     if (selectedNightTargets.length < 2) return;
+     
+     document.querySelectorAll(".night-target-btn").forEach(b => { b.disabled = true; });
+     await submitNightAction(role, selectedNightTargets.join(","), extraData);
+     selectedNightTargets = [];
+     const np = document.getElementById("night-panel");
+     if (np) np.innerHTML = `<div class="night-done"><span class="check-anim">✅</span><p>ส่งการกระทำแล้วรอ GM ประกาศ...</p></div>`;
+     return;
+  }
+
   document.querySelectorAll(".night-target-btn").forEach(b => {
     b.classList.remove("night-selected");
     b.disabled = true;
     const btns = b.querySelectorAll("button");
     if(btns) btns.forEach(bb => bb.disabled = true);
   });
-  btnEl.classList.add("night-selected");
+  
+  if (btnEl.parentElement && btnEl.parentElement.classList.contains("witch-card")) {
+      btnEl.parentElement.classList.add("night-selected");
+  } else {
+      btnEl.classList.add("night-selected");
+  }
 
   await submitNightAction(role, targetId, extraData);
 
