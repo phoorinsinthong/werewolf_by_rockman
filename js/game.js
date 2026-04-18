@@ -246,6 +246,22 @@ export async function submitNightAction(role, targetId, extraData = null) {
   await checkNightActionsComplete();
 }
 
+export async function getSeerResult() {
+  const snapshot = await get(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/privateData/${STATE.playerId}/seerResult`));
+  if (!snapshot.exists()) return null;
+  const data = snapshot.val();
+  const cfg = ROLES[data.targetRole];
+  
+  // A Seer identifies wolves (but not sorceress or minion standardly, though for simplicity all 'werewolf' team)
+  // Let's explicitly define standard "isWolf" for Seer:
+  const isWolf = ["werewolf", "alpha_wolf", "dire_wolf", "lone_wolf", "mystic_wolf", "wolf_cub", "wolf_man"].includes(data.targetRole) && data.targetRole !== "sorceress" && data.targetRole !== "minion";
+  
+  return {
+    targetName: data.targetName,
+    isWolf
+  };
+}
+
 // ─── Check if all night actions are done ──────────────────────────────────────
 
 async function checkNightActionsComplete() {
