@@ -834,6 +834,22 @@ label {
 }
 .btn-kick:hover { background: rgba(239,68,68,0.25); transform: scale(1.05); }
 
+/* GM Section Styling */
+#lobby-gm-section {
+  padding: 12px;
+  background: rgba(245, 158, 11, 0.03);
+  border: 1px dashed rgba(245, 158, 11, 0.2);
+  border-radius: var(--radius-md);
+  margin-top: 8px;
+}
+.lobby-player-gm {
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.1);
+}
+.lobby-avatar-gm {
+  border: 2px solid var(--day-gold) !important;
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.3) !important;
+}
+
 /* Host controls */
 .host-controls-card.hidden { display: none; }
 .host-hint {
@@ -1404,6 +1420,11 @@ label {
   background: rgba(255,255,255,0.05);
   border: 1px solid var(--border);
   border-bottom-left-radius: 4px;
+}
+.chat-msg-gm .chat-bubble {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.1);
 }
 .chat-badge { font-size: 0.62rem; padding: 2px 7px; border-radius: 99px; font-weight: 700; font-family: 'Kanit', sans-serif; }
 .wolf-badge { background: rgba(239,68,68,0.15); color: #fca5a5; }

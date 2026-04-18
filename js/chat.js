@@ -5,7 +5,6 @@
 
 import { ref, push, onValue } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-database.js";
 import { db, DB_PREFIX, STATE } from "./app.js";
-import { getRoleConfig, ROLES } from "./game.js";
 
 let chatUnsub = null;
 let activeTab = "global";
@@ -64,19 +63,12 @@ function handleSend() {
 
   // Determine which channel to post to based on active tab
   const me = STATE.roomData?.players?.[STATE.playerId];
-  const myRole = me?.role;
-  const isGM = myRole === "gm";
   let type = activeTab;
 
-  // Gate posting based on role/status, unless GM
-  if (!isGM) {
-    if (type === "werewolf") {
-      const cfg = STATE.roomData?.roleDeckCounts || {};
-      const team = ROLES[myRole]?.team;
-      if (team !== "werewolf") return;
-    }
-    if (type === "dead" && me?.isAlive !== false) return;
-  }
+  // Gate posting to wolf channel
+  if (type === "werewolf" && me?.role !== "werewolf") return;
+  // Gate posting to dead channel
+  if (type === "dead" && me?.isAlive !== false) return;
 
   sendMessage(text, type);
   input.value = "";
@@ -90,16 +82,12 @@ function subscribeToChatTab(tab) {
     const me = STATE.roomData?.players?.[STATE.playerId];
     const myRole = me?.role;
     const isAlive = me?.isAlive !== false;
-    const isGM = myRole === "gm";
 
     // Filter by tab
     const messages = Object.values(data).filter(msg => {
       if (tab === "global") return msg.type === "global";
-      if (tab === "werewolf") {
-        const team = ROLES[myRole]?.team;
-        return msg.type === "werewolf" && (team === "werewolf" || !isAlive || isGM);
-      }
-      if (tab === "dead") return msg.type === "dead" && (!isAlive || isGM);
+      if (tab === "werewolf") return msg.type === "werewolf" && (myRole === "werewolf" || !isAlive);
+      if (tab === "dead") return msg.type === "dead";
       return false;
     });
 
@@ -117,14 +105,19 @@ function renderMessages(messages, tab) {
 
   container.innerHTML = messages.map(msg => {
     const isMe = msg.senderId === STATE.playerId;
+    const isGM = msg.senderId === STATE.roomData?.hostId;
     const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
     let channelBadge = "";
     if (tab === "werewolf") channelBadge = `<span class="chat-badge wolf-badge">🐺 หมาป่า</span>`;
     if (tab === "dead") channelBadge = `<span class="chat-badge dead-badge">💀 ผีสิง</span>`;
+    
+    // Add GM badge
+    if (isGM && tab === "global") channelBadge += `<span class="chat-badge gm-badge" style="background:var(--day-gold); color:#000; border:none;">🎭 GM</span>`;
+
     return `
-      <div class="chat-msg ${isMe ? "chat-msg-me" : "chat-msg-other"}">
+      <div class="chat-msg ${isMe ? "chat-msg-me" : "chat-msg-other"} ${isGM ? "chat-msg-gm" : ""}">
         <div class="chat-msg-header">
-          <span class="chat-sender">${escapeHtml(msg.sender)}</span>
+          <span class="chat-sender" ${isGM ? 'style="color:var(--day-gold);font-weight:800"' : ''}>${escapeHtml(msg.sender)}</span>
           <span class="chat-time">${time}</span>
           ${channelBadge}
         </div>
@@ -142,22 +135,13 @@ function updateTabUI(tab) {
     if (el) el.classList.toggle("active", isActive);
   });
 
-  // Show/hide wolf and dead tabs based on player status/team/GM
+  // Show/hide wolf and dead tabs based on player status
   const me = STATE.roomData?.players?.[STATE.playerId];
-  const myRole = me?.role;
-  const isGM = myRole === "gm";
   const wolfTab = document.getElementById("chat-tab-wolf");
   const deadTab = document.getElementById("chat-tab-dead");
 
-  if (wolfTab) {
-    // Show wolf tab if on werewolf team, or if GM
-    const team = getRoleConfig(myRole).team;
-    wolfTab.classList.toggle("hidden", team !== "werewolf" && !isGM);
-  }
-  if (deadTab) {
-    // Show dead tab if dead, or if GM
-    deadTab.classList.toggle("hidden", me?.isAlive !== false && !isGM);
-  }
+  if (wolfTab) wolfTab.classList.toggle("hidden", me?.role !== "werewolf");
+  if (deadTab) deadTab.classList.toggle("hidden", me?.isAlive !== false);
 }
 
 export function refreshChatTabs() {
