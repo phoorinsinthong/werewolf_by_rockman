@@ -33,7 +33,7 @@ export async function createRoom(playerName) {
     phase:  null,
     dayCount: 0,
     maxPlayers: 16,
-    roleDeckCounts: { werewolf: 1, seer: 1, doctor: 1, villager: 1 },
+    roleDeckCounts: {},
     players: {
       [STATE.playerId]: {
         name:    playerName,
@@ -275,8 +275,8 @@ function renderLobby(roomData) {
   if (hostControls) hostControls.classList.toggle("hidden", !STATE.isHost);
 
   // --- Deck Setup Rendering ---
-  const counts = roomData.roleDeckCounts || { werewolf: 1, seer: 1, doctor: 1, villager: 1 };
-  const totalDeck = Object.values(counts).reduce((a, b) => a + b, 0);
+  const counts = roomData.roleDeckCounts || {};
+  const totalDeck = Object.values(counts).reduce((a, b) => a + (Number(b) || 0), 0);
   const targetPlayers = nonGMIds.length;
 
   const countSel = document.getElementById("deck-count-selected");
@@ -334,7 +334,13 @@ function renderLobby(roomData) {
   }).join("");
   const pubContainer = document.getElementById("public-role-deck");
   if (pubContainer) {
-    pubContainer.innerHTML = totalDeck > 0 ? pubDeckHtml : `<div class="text-center w-100" style="color: rgba(255,255,255,0.5); padding: 20px;">รอ GM จัดไพ่...</div>`;
+    if (totalDeck > 0) {
+      pubContainer.innerHTML = pubDeckHtml;
+    } else {
+      pubContainer.innerHTML = STATE.isHost 
+        ? `<div class="text-center w-100" style="color: var(--day-gold); padding: 20px; font-weight: 500;">🎮 กรุณาจัดเตรียมบทบาทที่ส่วน "ตัวจัดการการ์ดเกม" ด้านบน</div>`
+        : `<div class="text-center w-100" style="color: rgba(255,255,255,0.5); padding: 20px;">รอ GM จัดไพ่...</div>`;
+    }
   }
 
   // Start button

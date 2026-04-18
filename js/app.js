@@ -51,6 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Safety timeout in case Firebase Auth gets stuck due to network/cache
   const authTimeout = setTimeout(() => {
     showLoadingScreen(false);
+    showView("home"); // Show home so user can see the error banner
     showHomeError("การเชื่อมต่อเซิร์ฟเวอร์ล่าช้า กรุณาตรวจสอบอินเทอร์เน็ตหรือบังคับรีเฟรช (Ctrl+F5)");
   }, 8000);
 
@@ -64,6 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       signInAnonymously(auth).catch(err => {
         showLoadingScreen(false);
+        showView("home"); // Ensure home view is visible to show error
         showHomeError("การเชื่อมต่อล้มเหลว กรุณารีเฟรชหน้าเว็บ");
         console.error(err);
       });
