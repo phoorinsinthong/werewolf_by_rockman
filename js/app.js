@@ -75,6 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
   bindGameEvents();
   bindGMEvents();
   bindResultEvents();
+  bindModalEvents();
 });
 
 // ─── Reconnect ─────────────────────────────────────────────────────────────────
@@ -140,9 +141,8 @@ function bindHomeEvents() {
 // ─── Lobby Events ──────────────────────────────────────────────────────────────
 
 function bindLobbyEvents() {
-  document.getElementById("btn-leave-lobby")?.addEventListener("click", async () => {
-    await leaveRoom();
-    clearSession();
+  document.getElementById("btn-leave-room")?.addEventListener("click", () => {
+    document.getElementById("leave-modal")?.classList.remove("hidden");
   });
 
   document.getElementById("btn-ready")?.addEventListener("click", async () => {
@@ -182,6 +182,10 @@ function bindLobbyEvents() {
 // ─── Game Events (player-side) ─────────────────────────────────────────────────
 
 function bindGameEvents() {
+  document.getElementById("btn-leave-game")?.addEventListener("click", () => {
+      document.getElementById("leave-modal-game")?.classList.remove("hidden");
+  });
+
   // Submit vote
   document.getElementById("btn-submit-vote")?.addEventListener("click", async () => {
     await castVote();
@@ -303,6 +307,31 @@ function showLoadingScreen(show) {
   const el = document.getElementById("loading-overlay");
   if (el) el.classList.toggle("hidden", !show);
 }
+
+// ─── Modal Bindings ────────────────────────────────────────────────────────────
+
+function bindModalEvents() {
+  // Lobby Leave Modal
+  document.getElementById("btn-leave-confirm")?.addEventListener("click", async () => {
+    document.getElementById("leave-modal")?.classList.add("hidden");
+    await leaveRoom();
+    clearSession();
+  });
+  document.getElementById("btn-leave-cancel")?.addEventListener("click", () => {
+    document.getElementById("leave-modal")?.classList.add("hidden");
+  });
+
+  // Game Leave Modal
+  document.getElementById("btn-leave-game-confirm")?.addEventListener("click", async () => {
+    document.getElementById("leave-modal-game")?.classList.add("hidden");
+    await leaveRoom();
+    clearSession();
+  });
+  document.getElementById("btn-leave-game-cancel")?.addEventListener("click", () => {
+    document.getElementById("leave-modal-game")?.classList.add("hidden");
+  });
+}
+
 function clearSession() {
   try { localStorage.removeItem("ww_session"); } catch (_) {}
 }
