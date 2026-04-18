@@ -48,7 +48,14 @@ import { castVote, resolveVotes, gmSkipVote } from "./voting.js";
 document.addEventListener("DOMContentLoaded", () => {
   showLoadingScreen(true);
 
+  // Safety timeout in case Firebase Auth gets stuck due to network/cache
+  const authTimeout = setTimeout(() => {
+    showLoadingScreen(false);
+    showHomeError("การเชื่อมต่อเซิร์ฟเวอร์ล่าช้า กรุณาตรวจสอบอินเทอร์เน็ตหรือบังคับรีเฟรช (Ctrl+F5)");
+  }, 8000);
+
   onAuthStateChanged(auth, (user) => {
+    clearTimeout(authTimeout);
     if (user) {
       STATE.authUser = user;
       STATE.playerId = user.uid;
