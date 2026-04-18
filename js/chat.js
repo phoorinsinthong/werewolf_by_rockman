@@ -5,6 +5,7 @@
 
 import { ref, push, onValue } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-database.js";
 import { db, DB_PREFIX, STATE } from "./app.js";
+import { getRoleConfig, ROLES } from "./game.js";
 
 let chatUnsub = null;
 let activeTab = "global";
@@ -63,12 +64,19 @@ function handleSend() {
 
   // Determine which channel to post to based on active tab
   const me = STATE.roomData?.players?.[STATE.playerId];
+  const myRole = me?.role;
+  const isGM = myRole === "gm";
   let type = activeTab;
 
-  // Gate posting to wolf channel
-  if (type === "werewolf" && me?.role !== "werewolf") return;
-  // Gate posting to dead channel
-  if (type === "dead" && me?.isAlive !== false) return;
+  // Gate posting based on role/status, unless GM
+  if (!isGM) {
+    if (type === "werewolf") {
+      const cfg = STATE.roomData?.roleDeckCounts || {};
+      const team = ROLES[myRole]?.team;
+      if (team !== "werewolf") return;
+    }
+    if (type === "dead" && me?.isAlive !== false) return;
+  }
 
   sendMessage(text, type);
   input.value = "";
@@ -82,12 +90,16 @@ function subscribeToChatTab(tab) {
     const me = STATE.roomData?.players?.[STATE.playerId];
     const myRole = me?.role;
     const isAlive = me?.isAlive !== false;
+    const isGM = myRole === "gm";
 
     // Filter by tab
     const messages = Object.values(data).filter(msg => {
       if (tab === "global") return msg.type === "global";
-      if (tab === "werewolf") return msg.type === "werewolf" && (myRole === "werewolf" || !isAlive);
-      if (tab === "dead") return msg.type === "dead";
+      if (tab === "werewolf") {
+        const team = ROLES[myRole]?.team;
+        return msg.type === "werewolf" && (team === "werewolf" || !isAlive || isGM);
+      }
+      if (tab === "dead") return msg.type === "dead" && (!isAlive || isGM);
       return false;
     });
 
@@ -130,13 +142,22 @@ function updateTabUI(tab) {
     if (el) el.classList.toggle("active", isActive);
   });
 
-  // Show/hide wolf and dead tabs based on player status
+  // Show/hide wolf and dead tabs based on player status/team/GM
   const me = STATE.roomData?.players?.[STATE.playerId];
+  const myRole = me?.role;
+  const isGM = myRole === "gm";
   const wolfTab = document.getElementById("chat-tab-wolf");
   const deadTab = document.getElementById("chat-tab-dead");
 
-  if (wolfTab) wolfTab.classList.toggle("hidden", me?.role !== "werewolf");
-  if (deadTab) deadTab.classList.toggle("hidden", me?.isAlive !== false);
+  if (wolfTab) {
+    // Show wolf tab if on werewolf team, or if GM
+    const team = getRoleConfig(myRole).team;
+    wolfTab.classList.toggle("hidden", team !== "werewolf" && !isGM);
+  }
+  if (deadTab) {
+    // Show dead tab if dead, or if GM
+    deadTab.classList.toggle("hidden", me?.isAlive !== false && !isGM);
+  }
 }
 
 export function refreshChatTabs() {
