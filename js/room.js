@@ -150,8 +150,10 @@ export function subscribeToRoom() {
         document.body.removeAttribute("data-phase");
         const roleCardContainer = document.getElementById("role-card-container");
         if (roleCardContainer) roleCardContainer.classList.remove("highlight-flip");
-        document.getElementById("fx-elimination")?.className = "fx-overlay hidden";
-        document.getElementById("elimination-banner")?.classList.add("hidden");
+        const fxEl = document.getElementById("fx-elimination");
+        if (fxEl) fxEl.className = "fx-overlay hidden";
+        const bannerEl = document.getElementById("elimination-banner");
+        if (bannerEl) bannerEl.classList.add("hidden");
         renderLobby(roomData);
       } else if (status === "playing") {
         showView("game");
