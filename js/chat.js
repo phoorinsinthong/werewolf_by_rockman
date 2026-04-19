@@ -46,10 +46,10 @@ export async function sendMessage(text, type) {
   });
 }
 
-export function setActiveChatTab(tab) {
+export function setActiveChatTab(tab, myRole, isDead) {
   activeTab = tab;
   subscribeToChatTab(tab);
-  updateTabUI(tab);
+  updateTabUI(tab, myRole, isDead);
 }
 
 // ─── Tab Rendering ─────────────────────────────────────────────────────────────
@@ -128,24 +128,33 @@ function renderMessages(messages, tab) {
   container.scrollTop = container.scrollHeight;
 }
 
-function updateTabUI(tab) {
+function updateTabUI(tab, myRole, isDead) {
+  const me     = STATE.roomData?.players?.[STATE.playerId];
+  const role   = myRole || me?.role || "";
+  const dead   = isDead !== undefined ? isDead : (me?.isAlive === false);
+  const isHost = STATE.isHost;
+
   ["global", "wolf", "dead"].forEach(t => {
     const el = document.getElementById(`chat-tab-${t}`);
     const isActive = (t === tab) || (t === "wolf" && tab === "werewolf");
     if (el) el.classList.toggle("active", isActive);
   });
 
-  // Show/hide wolf and dead tabs based on player status
-  const me = STATE.roomData?.players?.[STATE.playerId];
-  const wolfTab = document.getElementById("chat-tab-wolf");
-  const deadTab = document.getElementById("chat-tab-dead");
+  const WOLF_ROLES = ["werewolf","alpha_wolf","dire_wolf","lone_wolf","mystic_wolf","wolf_cub","wolf_man","minion"];
+  const isWolf = WOLF_ROLES.includes(role);
 
-  if (wolfTab) wolfTab.classList.toggle("hidden", me?.role !== "werewolf");
-  if (deadTab) deadTab.classList.toggle("hidden", me?.isAlive !== false);
+  // Wolf tab: visible to wolf team OR dead players (ghosts can see wolf chat once dead)
+  const wolfTab = document.getElementById("chat-tab-wolf");
+  if (wolfTab) wolfTab.classList.toggle("hidden", !isWolf && !dead);
+
+  // Dead tab: visible only to dead players or GM
+  const deadTab = document.getElementById("chat-tab-dead");
+  if (deadTab) deadTab.classList.toggle("hidden", !dead && !isHost);
 }
 
 export function refreshChatTabs() {
-  updateTabUI(activeTab);
+  const me   = STATE.roomData?.players?.[STATE.playerId];
+  updateTabUI(activeTab, me?.role, me?.isAlive === false);
 }
 
 function escapeHtml(str) {

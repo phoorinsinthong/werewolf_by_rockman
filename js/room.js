@@ -10,7 +10,7 @@ import {
   startGame, getRoleConfig, startVotingPhase, startPhaseTimer, stopPhaseTimer,
   resetToLobby, getSeerResult, submitNightAction, startNightPhase,
   gmAnnounceNightResult, announceWinner, resolveNight, ROLES,
-  setNightTurn, approveNightAction, rejectNightAction
+  setNightTurn, approveNightAction, rejectNightAction, triggerHunterAbility
 } from "./game.js";
 import { renderVoting, castVote, resetVoteSelection, resolveVotes, gmSkipVote} from "./voting.js";
 import { initChat, setActiveChatTab } from "./chat.js";
@@ -168,17 +168,31 @@ export function subscribeToRoom() {
         renderResult(roomData);
       }
     } else {
-      // Data-only update (check if players or major data changed)
-      const playersStr   = JSON.stringify(roomData.players || {});
-      const deckCountsStr = JSON.stringify(roomData.roleDeckCounts || {});
-      
-      const playersChanged = playersStr !== lastPlayersStr;
-      const deckChanged    = deckCountsStr !== lastRoleDeckCountsStr;
+      // Data-only update: re-render if any relevant data changed
+      const playersStr      = JSON.stringify(roomData.players || {});
+      const deckCountsStr   = JSON.stringify(roomData.roleDeckCounts || {});
+      const nightActionsStr = JSON.stringify(roomData.nightActions || {});
+      const nightTurnStr    = roomData.nightTurn || "";
+      const hunterStr       = roomData.hunterPending || "";
+      // Private data for current player only (feedback)
+      const privateStr      = JSON.stringify(roomData.privateData?.[STATE.playerId] || {});
 
-      if (playersChanged || deckChanged) {
+      const anyChanged =
+        playersStr      !== lastPlayersStr ||
+        deckCountsStr   !== lastRoleDeckCountsStr ||
+        nightActionsStr !== (subscribeToRoom._lastNightActions || "") ||
+        nightTurnStr    !== (subscribeToRoom._lastNightTurn || "") ||
+        hunterStr       !== (subscribeToRoom._lastHunter || "") ||
+        privateStr      !== (subscribeToRoom._lastPrivate || "");
+
+      if (anyChanged) {
         lastPlayersStr = playersStr;
         lastRoleDeckCountsStr = deckCountsStr;
-        
+        subscribeToRoom._lastNightActions = nightActionsStr;
+        subscribeToRoom._lastNightTurn    = nightTurnStr;
+        subscribeToRoom._lastHunter       = hunterStr;
+        subscribeToRoom._lastPrivate      = privateStr;
+
         if (status === "waiting") renderLobby(roomData);
         if (status === "playing") renderGameScreenPartial(roomData);
         if (status === "ended")   renderResult(roomData);
@@ -481,11 +495,7 @@ function renderGMPanel(roomData) {
     }
   }
 
-  // Night "waiting" section
-  const nightWaiting = document.getElementById("gm-night-waiting");
-  if (nightWaiting) nightWaiting.style.display = phase === "night" ? "block" : "none";
-
-  // 3. Night Logic Control
+  // 3. Night Logic Control (visible when phase=night or night-done)
   const nightCtrl = document.getElementById("gm-night-control");
   if (nightCtrl) {
     const isNight = phase === "night" || phase === "night-done";
@@ -493,9 +503,15 @@ function renderGMPanel(roomData) {
     if (isNight) renderGMNightControl(roomData);
   }
 
-  // 4. Vote tally card
+  // 4. Vote tally card (show only during voting phase)
+  const voteSection = document.getElementById("gm-vote-section");
+  if (voteSection) {
+    const isVoting = phase === "voting";
+    voteSection.style.display = isVoting ? "block" : "none";
+    if (isVoting) renderGMVoteTally(roomData);
+  }
 
-  // 4. Phase control button visibility
+  // 5. Phase control button visibility
   const phaseCtrl = {
     standby:      "gm-ctrl-standby",
     night:        "gm-ctrl-night",
@@ -507,6 +523,42 @@ function renderGMPanel(roomData) {
     const el = document.getElementById(elemId);
     if (el) el.style.display = (ph === phase) ? "block" : "none";
   });
+
+  // 6. Hunter pending notification
+  let hunterNotify = document.getElementById("gm-hunter-notify");
+  if (!hunterNotify) {
+    hunterNotify = document.createElement("div");
+    hunterNotify.id = "gm-hunter-notify";
+    hunterNotify.className = "glass-card gm-card";
+    hunterNotify.style.cssText = "border-color:rgba(234,88,12,0.4);background:rgba(234,88,12,0.06);";
+    const mainPanel = document.getElementById("gm-main-panel");
+    // Insert after gm-night-control
+    const nightCtrlEl = document.getElementById("gm-night-control");
+    if (nightCtrlEl && nightCtrlEl.nextSibling) mainPanel?.insertBefore(hunterNotify, nightCtrlEl.nextSibling);
+    else mainPanel?.appendChild(hunterNotify);
+  }
+  const hunterPendingId = roomData.hunterPending;
+  if (hunterPendingId) {
+    const hunterPlayer = players[hunterPendingId];
+    const pending = roomData.nightActions?.pending;
+    const isPendingHunter = pending?.role === "hunter";
+    hunterNotify.style.display = "block";
+    hunterNotify.innerHTML = `
+      <div class="gm-card-title"><span>🔫</span> พรานป่ากำลังใช้พลัง!</div>
+      <p style="color:#f87171;margin:8px 0"><b>${escapeHtml(hunterPlayer?.name || "?")}</b> ถูกฆ่าแล้ว — กำลังเล็งเป้าหมายก่อนตาย</p>
+      ${ isPendingHunter ? `
+        <div style="margin-top:10px;padding:10px;background:rgba(251,146,60,0.1);border:1px solid rgba(251,146,60,0.3);border-radius:8px">
+          <p style="color:orange;font-weight:700;margin-bottom:8px">⚖️ พรานป่าเลือกยิง:</p>
+          <div style="font-size:0.95em;margin-bottom:10px">เป้าหมาย: <b style="color:#fca5a5">${escapeHtml(players[pending.targetId]?.name || pending.targetId)}</b></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary btn-sm" style="flex:1" onclick="window._approveAction()">✅ อนุมัติ (ยิงเลย)</button>
+            <button class="btn btn-ghost btn-sm" style="flex:1;border:1px solid rgba(255,255,255,0.2)" onclick="window._rejectAction()">❌ ให้เลือกใหม่</button>
+          </div>
+        </div>` : `<p style="color:var(--text-muted);font-size:0.85em;margin-top:8px">⏳ รอผู้เล่นส่งเป้าหมายที่จะยิง...</p>`}
+    `;
+  } else {
+    hunterNotify.style.display = "none";
+  }
 }
 
 function buildNightResultHTML(actions, players) {
@@ -561,19 +613,26 @@ function renderGMRoleTable(players, hostId) {
   const table = document.getElementById("gm-role-table");
   if (!table) return;
 
-  const ids     = Object.keys(players);
-  const nonGM   = ids.filter(id => id !== hostId);
+  const ids   = Object.keys(players);
+  const nonGM = ids.filter(id => id !== hostId);
+
+  // Count votes for tooltip
+  const voteMap = {};
+  for (const p of Object.values(players)) {
+    if (p.vote) voteMap[p.vote] = (voteMap[p.vote] || 0) + 1;
+  }
 
   table.innerHTML = nonGM.map(id => {
-    const p      = players[id];
-    const cfg    = getRoleConfig(p.role || "villager");
-    const dead   = !p.isAlive;
+    const p    = players[id];
+    const cfg  = getRoleConfig(p.role || "villager");
+    const dead = !p.isAlive;
+    const votes = voteMap[id] ? `<span style="background:rgba(239,68,68,0.2);color:#f87171;padding:2px 6px;border-radius:4px;font-size:0.75em;margin-left:4px">${voteMap[id]}🗳️</span>` : "";
     return `
       <div class="gm-role-row ${dead ? "gm-status-dead" : ""}">
         <div class="gm-role-avatar" style="background:${cfg.color}22;color:${cfg.color}">${p.name.charAt(0).toUpperCase()}</div>
-        <div class="gm-player-name">${escapeHtml(p.name)} ${dead ? "💀" : ""}</div>
+        <div class="gm-player-name">${escapeHtml(p.name)}${votes} ${dead ? "💀" : ""}</div>
         <div class="gm-role-badge" style="border-color:${cfg.color};color:${cfg.color};background:${cfg.color}15">${cfg.icon} ${cfg.name}</div>
-        <button class="btn btn-ghost" style="padding:4px 8px; font-size:0.8em; margin-left:8px;" onclick="window._togglePlayerAlive('${id}', ${!dead})">${dead ? "ชุบ" : "ฆ่า"}</button>
+        <button class="btn ${dead ? 'btn-primary' : 'btn-danger'} btn-sm" style="padding:3px 10px; font-size:0.78em; margin-left:8px;" onclick="window._togglePlayerAlive('${id}', ${dead})">${dead ? "ชุบ" : "ฆ่า"}</button>
       </div>`;
   }).join("");
 }
@@ -683,40 +742,44 @@ function renderPlayerGameView(phase, me, players, roomData) {
   if (roleCardContainer) {
     roleCardContainer.style.display = "block";
     renderRoleCard(me, players, roomData.hostId);
-    
-    // Trigger 3D flip effect on first render or after reset
     if (!roleCardContainer.classList.contains("highlight-flip")) {
-      // Ensure clean state before trigger
       roleCardContainer.classList.remove("highlight-flip");
-      
-      // Use double RAF or a safe timeout to ensure display:block is applied before transformation
-      setTimeout(() => {
-        requestAnimationFrame(() => {
-          roleCardContainer.classList.add("highlight-flip");
-        });
-      }, 500);
+      setTimeout(() => requestAnimationFrame(() => roleCardContainer.classList.add("highlight-flip")), 500);
     }
   }
 
-  // Standby panel
   const standbyPanel = document.getElementById("standby-panel");
   const nightPanel   = document.getElementById("night-panel");
   const dayPanel     = document.getElementById("day-panel");
   const votePanel    = document.getElementById("vote-panel");
 
-  [standbyPanel, nightPanel, dayPanel, votePanel].forEach(el => {
-    if (el) el.style.display = "none";
-  });
+  [standbyPanel, nightPanel, dayPanel, votePanel].forEach(el => { if (el) el.style.display = "none"; });
+
+  // ── Hunter death-ability override ──────────────────────────────────────────
+  const hunterPending = STATE.roomData?.hunterPending;
+  if (hunterPending && hunterPending === STATE.playerId && !me?.isAlive) {
+    if (nightPanel) {
+      nightPanel.style.display = "block";
+      const hasPendingShot = STATE.roomData?.nightActions?.pending?.submittedBy === STATE.playerId
+        && STATE.roomData?.nightActions?.pending?.role === "hunter";
+      if (hasPendingShot) {
+        nightPanel.innerHTML = `<div class="night-done"><span class="moon-anim" style="font-size:2em">⏳</span><p style="font-weight:700;color:#fb923c">รอ GM อนุมัติ...</p><p style="color:var(--text-muted);font-size:0.85em">GM กำลังพิจารณาเป้าหมายที่คุณเลือก</p></div>`;
+      } else {
+        renderHunterPanel(nightPanel, players, roomData.hostId);
+      }
+    }
+    if (me?.role === "seer") updateSeerResult();
+    return;
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   if (phase === "standby" || phase === "night-done") {
     if (standbyPanel) {
       standbyPanel.style.display = "block";
       const msgEl = document.getElementById("standby-msg");
-      if (msgEl) {
-        msgEl.textContent = phase === "night-done"
-          ? "🌙 รอผู้ดำเนินเกมประกาศผลกลางคืน..."
-          : "🎭 รอผู้ดำเนินเกมเริ่มรอบต่อไป...";
-      }
+      if (msgEl) msgEl.textContent = phase === "night-done"
+        ? "🌙 รอผู้ดำเนินเกมประกาศผลกลางคืน..."
+        : "🎭 รอผู้ดำเนินเกมเริ่มรอบต่อไป...";
     }
   } else if (phase === "night") {
     if (nightPanel) { nightPanel.style.display = "block"; renderNightPanel(me, players); }
@@ -726,7 +789,6 @@ function renderPlayerGameView(phase, me, players, roomData) {
     if (votePanel) { votePanel.style.display = "block"; renderVoting(roomData); resetVoteSelection(); }
   }
 
-  // Seer result
   if (me?.role === "seer") updateSeerResult();
 }
 
@@ -822,9 +884,17 @@ function renderNightPanel(me, players) {
 
   const actionDone = !!STATE.roomData?.nightActions?.[role + "TargetDone"];
   const isTurn     = STATE.roomData?.nightTurn === role;
-  
+
   if (actionDone) {
-    panel.innerHTML = `<div class="night-done"><span class="check-anim">✅</span><p>ส่งการกระทำแล้ว รอ GM สรุปคืน...</p></div>`;
+    // Show role-specific feedback if GM has approved
+    const feedback = STATE.roomData?.privateData?.[STATE.playerId]?.nightFeedback;
+    const dc = STATE.roomData?.dayCount || 1;
+    if (feedback && feedback.dayCount === dc) {
+      panel.innerHTML = buildNightFeedbackHTML(feedback);
+    } else {
+      // GM approved but feedback not yet written — show pending
+      panel.innerHTML = `<div class="night-done"><span class="check-anim">✅</span><p>GM อนุมัติแล้ว!</p><p style="color:var(--text-muted);font-size:0.85em">รอประกาศผลตอนเช้า</p></div>`;
+    }
     return;
   }
 
@@ -901,6 +971,153 @@ function renderNightPanel(me, players) {
     </div>`;
 }
 
+// ─── Night Feedback HTML (role-specific result shown to player after GM approves) ──
+
+function buildNightFeedbackHTML(feedback) {
+  const T    = feedback.type;
+  const name = feedback.targetName
+    ? `<b style="color:white">${escapeHtml(feedback.targetName)}</b>`
+    : "";
+
+  const card = (icon, title, titleColor, body, borderColor, bgColor) =>
+    `<div class="night-feedback" style="border-color:${borderColor};background:${bgColor}">
+      <div class="nf-icon">${icon}</div>
+      <p class="nf-title" style="color:${titleColor}">${title}</p>
+      ${body}
+    </div>`;
+
+  if (T === "skipped") {
+    return card("⏭️", "ข้ามการกระทำ", "#9ca3af",
+      `<p class="nf-sub">รอ GM ประกาศผลและเริ่มวันใหม่</p>`,
+      "rgba(107,114,128,0.3)", "rgba(107,114,128,0.06)");
+  }
+
+  if (T === "wolf_kill") {
+    return card("🐺", "ยืนยันเป้าหมาย!", "#ef4444",
+      `<p style="margin:4px 0">${name}</p><p class="nf-sub">จะถูกกัดคืนนี้ — รอ GM ประกาศผลตอนเช้า</p>`,
+      "rgba(239,68,68,0.3)", "rgba(239,68,68,0.08)");
+  }
+
+  if (T === "seer" || T === "inspect") {
+    const isWolf  = feedback.isWolf;
+    const verdict = isWolf ? "🐺 หมาป่า!" : "✅ ชาวบ้าน";
+    const color   = isWolf ? "#ef4444" : "#10b981";
+    const icon2   = T === "inspect" ? "👁️🐺" : "🔮";
+    return card(icon2, "ผลการส่อง", color,
+      `<p style="margin:4px 0">${name}</p><p style="font-size:1.4em;font-weight:800;color:${color};margin:6px 0">${verdict}</p>`,
+      `${color}40`, `${color}10`);
+  }
+
+  if (T === "sorceress") {
+    const isSeer  = feedback.isSeer;
+    const verdict = isSeer ? "🔮 ใช่! นี่คือหมอดู!" : "❌ ไม่ใช่หมอดู";
+    const color   = isSeer ? "#a78bfa" : "#6b7280";
+    return card("🔮🐺", "ผลการหาหมอดู", color,
+      `<p style="margin:4px 0">${name}</p><p style="font-size:1.15em;font-weight:800;color:${color};margin:6px 0">${verdict}</p>`,
+      `${color}40`, `${color}10`);
+  }
+
+  if (T === "aura") {
+    const hasS  = feedback.hasSpecial;
+    const verdict = hasS ? "✨ มีบทบาทพิเศษ" : "👤 ชาวบ้านธรรมดา";
+    const color   = hasS ? "#d946ef" : "#6b7280";
+    return card("✨", "ผลออร่า", color,
+      `<p style="margin:4px 0">${name}</p><p style="font-size:1.15em;font-weight:800;color:${color};margin:6px 0">${verdict}</p>`,
+      `${color}40`, `${color}10`);
+  }
+
+  if (T === "pi") {
+    const isWolf  = feedback.isWolf;
+    const verdict = isWolf ? "🐺 มีหมาป่าในบริเวณนี้!" : "✅ ไม่พบหมาป่า";
+    const color   = isWolf ? "#ef4444" : "#10b981";
+    return card("🕵️", "ผลสืบสวน", color,
+      `<p style="margin:4px 0">${name} และคนข้างเคียง</p><p style="font-size:1.15em;font-weight:800;color:${color};margin:6px 0">${verdict}</p>`,
+      `${color}40`, `${color}10`);
+  }
+
+  if (T === "guard") {
+    return card("🛡️", "ปกป้องสำเร็จ!", "#10b981",
+      `<p style="margin:4px 0">${name}</p><p class="nf-sub">ปลอดภัยคืนนี้แล้ว!</p>`,
+      "rgba(16,185,129,0.3)", "rgba(16,185,129,0.08)");
+  }
+
+  if (T === "witch") {
+    const isHeal = feedback.action === "ชุบชีวิต";
+    const color  = isHeal ? "#10b981" : "#ef4444";
+    const icon2  = isHeal ? "🧪" : "☠️";
+    return card(icon2, `${feedback.action} สำเร็จ!`, color,
+      `<p style="margin:4px 0">${name}</p><p class="nf-sub">รอ GM ประกาศผลตอนเช้า</p>`,
+      `${color}40`, `${color}10`);
+  }
+
+  if (T === "ban") {
+    return card("🚫", "แบนสำเร็จ!", "#9ca3af",
+      `<p style="margin:4px 0">${name}</p><p class="nf-sub">จะไม่มีสิทธิ์โหวตพรุ่งนี้</p>`,
+      "rgba(107,114,128,0.3)", "rgba(107,114,128,0.06)");
+  }
+
+  if (T === "silence") {
+    return card("🤐", "ปิดปากสำเร็จ!", "#a78bfa",
+      `<p style="margin:4px 0">${name}</p><p class="nf-sub">พรุ่งนี้พวกเขาจะพูดหรือโหวตไม่ได้</p>`,
+      "rgba(139,92,246,0.3)", "rgba(139,92,246,0.06)");
+  }
+
+  if (T === "kill_confirmed") {
+    return card("🔪", "สังหารสำเร็จ!", "#ef4444",
+      `<p style="margin:4px 0">${name}</p><p class="nf-sub">รอ GM ประกาศผลตอนเช้า</p>`,
+      "rgba(239,68,68,0.3)", "rgba(239,68,68,0.08)");
+  }
+
+  if (T === "hunter_shot") {
+    return card("🔫", "ยิงสำเร็จ!", "#f97316",
+      `<p style="margin:4px 0">${name}</p><p class="nf-sub">จะตายตามคุณไปด้วย — GM ดำเนินการต่อ</p>`,
+      "rgba(234,88,12,0.3)", "rgba(234,88,12,0.08)");
+  }
+
+  if (T === "cult_recruit") {
+    return card("🛐", "ดึงเข้าลัทธิสำเร็จ!", "#a78bfa",
+      `<p style="margin:4px 0">${name}</p><p class="nf-sub">ตอนนี้อยู่ในลัทธิของคุณแล้ว</p>`,
+      "rgba(139,92,246,0.3)", "rgba(139,92,246,0.06)");
+  }
+
+  if (T === "action_confirmed") {
+    return card("✅", "GM อนุมัติแล้ว!", "#10b981",
+      `${name ? `<p style="margin:4px 0">${name}</p>` : ""}<p class="nf-sub">รอ GM ประกาศผลตอนเช้า</p>`,
+      "rgba(16,185,129,0.3)", "rgba(16,185,129,0.08)");
+  }
+
+  // default fallback
+  return `<div class="night-done"><span class="check-anim">✅</span><p>GM อนุมัติแล้ว!</p><p class="nf-sub">รอประกาศตอนเช้า</p></div>`;
+}
+
+// ─── Hunter Death Panel ────────────────────────────────────────────────────────
+
+function renderHunterPanel(panel, players, hostId) {
+  const targets = Object.entries(players)
+    .filter(([id, p]) => p.isAlive && id !== STATE.playerId && p.role !== "gm" && id !== hostId);
+
+  panel.innerHTML = `
+    <div class="night-action" style="padding:16px">
+      <div style="text-align:center;margin-bottom:12px">
+        <div style="font-size:2.5em;margin-bottom:4px">🔫</div>
+        <p class="night-action-label" style="color:#f97316">ก่อนตาย คุณยิงผู้เล่น 1 คนได้!</p>
+        <p style="color:var(--text-muted);font-size:0.84rem;margin-top:4px">เลือกเป้าหมายที่จะพาไปด้วย</p>
+      </div>
+      <div class="night-target-grid">
+        ${targets.length === 0
+          ? `<p style="color:var(--text-muted);font-size:0.84rem;grid-column:1/-1;text-align:center">ไม่มีเป้าหมายที่มีชีวิต</p>`
+          : targets.map(([id, p]) =>
+              `<button class="night-target-btn" onclick="window._nightAction('hunter','${id}',this)">
+                <div class="night-avatar">${p.name.charAt(0).toUpperCase()}</div>
+                <span>${escapeHtml(p.name)}</span>
+              </button>`
+            ).join("")}
+      </div>
+      <button class="btn btn-ghost mt-3 w-100" style="color:#d1d5db;border:1px solid rgba(255,255,255,0.3)"
+        onclick="window._nightAction('hunter','skip',this,'skip')">ไม่ยิงใคร — ยอมรับชะตา</button>
+    </div>`;
+}
+
 // ─── Day Panel ─────────────────────────────────────────────────────────────────
 
 function renderDayPanel(me) {
@@ -925,9 +1142,11 @@ async function updateSeerResult() {
   const el     = document.getElementById("seer-result");
   if (!el) return;
   if (result) {
-    const cfg = getRoleConfig(result.targetRole);
+    const verdict = result.isWolf ? "🐺 หมาป่า!" : "✅ ชาวบ้าน";
+    const color   = result.isWolf ? "#ef4444" : "#10b981";
     el.classList.remove("hidden");
-    el.textContent = `🔮 ${result.targetName} คือ ${cfg.icon} ${cfg.name}`;
+    el.style.cssText = `color:${color}; border-color:${color}40; background:${color}10;`;
+    el.textContent = `🔮 ${result.targetName} คือ ${verdict}`;
   } else {
     el.classList.add("hidden");
   }
@@ -1074,11 +1293,24 @@ async function kickPlayer(playerId) {
   await remove(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${playerId}`));
 }
 
-window._togglePlayerAlive = async function(id, isAliveCurrent) {
+window._togglePlayerAlive = async function(id, isDead) {
   if (!STATE.isHost) return;
-  await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}`), {
-    isAlive: !isAliveCurrent
-  });
+  // isDead=true → revive (isAlive=true), isDead=false → kill (isAlive=false)
+  const toLive = !!isDead;
+  await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}`), { isAlive: toLive });
+
+  if (!toLive) {
+    // Just killed — check if this player is a hunter
+    const player = STATE.roomData?.players?.[id];
+    if (player?.role === "hunter") {
+      await triggerHunterAbility(id);
+    }
+  } else {
+    // Revived — clear hunterPending if it was them
+    if (STATE.roomData?.hunterPending === id) {
+      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`), { hunterPending: null });
+    }
+  }
 };
 
 // ─── Ready Toggle ──────────────────────────────────────────────────────────────

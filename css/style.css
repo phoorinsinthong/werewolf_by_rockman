@@ -1742,3 +1742,45 @@ label {
 .lobby-avatar-gm { background: rgba(139, 92, 246, 0.2); color: #c4b5fd; font-size: 1.2rem; }
 .gm-badge-label { display: block; font-size: 0.75rem; color: #a78bfa; margin-top: 2px; }
 .ready-gm { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; }
+
+/* ─── Night Feedback Cards (shown after GM approves action) ─────────────── */
+.night-feedback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 24px 20px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-lg);
+  background: rgba(255,255,255,0.04);
+  margin: 12px 0;
+  animation: feedback-pop 0.4s var(--transition-bounce) both;
+  gap: 4px;
+}
+@keyframes feedback-pop {
+  from { opacity: 0; transform: scale(0.88) translateY(12px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.nf-icon {
+  font-size: 3rem;
+  margin-bottom: 8px;
+  animation: nf-icon-bounce 0.5s var(--transition-bounce) both;
+  animation-delay: 0.1s;
+}
+@keyframes nf-icon-bounce {
+  from { transform: scale(0) rotate(-20deg); opacity: 0; }
+  to   { transform: scale(1) rotate(0); opacity: 1; }
+}
+.nf-title {
+  font-family: 'Kanit', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  margin-bottom: 2px;
+}
+.nf-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.4;
+}

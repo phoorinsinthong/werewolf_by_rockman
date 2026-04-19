@@ -81,7 +81,7 @@ export const ROLES = {
     description: "รู้ว่าหมาป่าคือใคร ป่วนโหวต และทดสอบเป็นชาวบ้านให้หมอดูเห็น" },
   mystic_wolf: { name: "หมาป่าผู้หยั่งรู้", icon: "👁️🐺", team: "werewolf", color: "#4f46e5", actionPhase: "nightly", actionType: "target",
     description: "สามารถออกส่องบทบาทที่แท้จริงของผู้เล่น 1 คนได้เหมือนหมอดู" },
-  sorceress: { name: "แม่มดแห่งความมืด", icon: "🔮🐺", team: "werewolf", color: "#indigo", actionPhase: "nightly", actionType: "target",
+  sorceress: { name: "แม่มดแห่งความมืด", icon: "🔮🐺", team: "werewolf", color: "#6366f1", actionPhase: "nightly", actionType: "target",
     description: "ตื่นมาทายหาหมอดู (ส่องดูเพื่อหาว่าใครคือหมอดู)" },
   wolf_cub: { name: "ลูกหมาป่า", icon: "🐾🐺", team: "werewolf", color: "#f87171", actionPhase: "nightly", actionType: "target",
     description: "หากตาย คืนถัดไปหมาป่าจะโกรธแค้นและล่าเหยื่อได้ถึง 2 คน" },
@@ -227,9 +227,12 @@ export async function setNightTurn(role) {
 
 export async function submitNightAction(role, targetId, extraData = null) {
   const roleCfg = ROLES[role];
-  if (!roleCfg || roleCfg.actionPhase === "none") return;
+  if (!roleCfg) return;
+  // Allow hunter death-shot even though actionPhase=none
+  if (roleCfg.actionPhase === "none" && role !== "hunter") return;
+  if (role === "hunter" && STATE.roomData?.hunterPending !== STATE.playerId) return;
 
-  // Instead of finalized, save to PENDING for GM review
+  // Save to PENDING for GM review
   const payload = {
     pending: {
       role,
@@ -250,32 +253,94 @@ export async function approveNightAction() {
   if (!pending) return;
 
   const { role, targetId, extraData, submittedBy } = pending;
-  
+  const players  = room.players || {};
+  const dayCount = room.dayCount || 1;
+
+  // 1. Mark action as done
   const updates = {
-    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions/${role}Target`]: targetId,
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions/${role}Target`]:     targetId,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions/${role}TargetDone`]: true,
-    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions/pending`]: null,
-    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightTurn`]: null, // End turn after approval
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions/pending`]:           null,
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightTurn`]:                      null,
   };
   if (extraData) updates[`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions/${role}Extra`] = extraData;
-
   await update(ref(db), updates);
 
-  // Provide immediate feedback for specific roles AFTER approval
-  if (["seer", "mystic_wolf", "pi", "aura_seer"].includes(role) && targetId) {
-    const snapshot = await get(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${targetId}`));
-    const targetData = snapshot.val();
-    if (targetData) {
-      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/privateData/${submittedBy}`), {
-        [`${role}Result`]: {
-          targetId,
-          targetName: targetData.name,
-          targetRole: targetData.role,
-          timestamp:  Date.now(),
-        },
-      });
-    }
+  // 2. Build role-specific feedback for the acting player
+  const WOLF_ROLES = ["werewolf","alpha_wolf","dire_wolf","lone_wolf","mystic_wolf","wolf_cub","wolf_man"];
+  const targetData = (targetId && targetId !== "skip") ? (players[targetId] || {}) : null;
+  const targetName = targetData?.name || "";
+  const targetRole = targetData?.role || "";
+
+  let feedback = null;
+
+  if (!targetId || targetId === "skip") {
+    feedback = { type: "skipped", dayCount };
+  } else if (["werewolf","alpha_wolf","dire_wolf","lone_wolf","wolf_cub","wolf_man"].includes(role)) {
+    feedback = { type: "wolf_kill", targetName, dayCount };
+  } else if (role === "seer" || role === "apprentice_seer") {
+    // wolf_man appears as villager to seer; lycan appears as wolf
+    const isWolf = (WOLF_ROLES.includes(targetRole) && targetRole !== "wolf_man") || targetRole === "lycan";
+    feedback = { type: "seer", targetName, isWolf, dayCount };
+  } else if (role === "mystic_wolf") {
+    const isWolf = WOLF_ROLES.includes(targetRole);
+    feedback = { type: "inspect", targetName, isWolf, dayCount };
+  } else if (role === "sorceress") {
+    const isSeer = ["seer","apprentice_seer"].includes(targetRole);
+    feedback = { type: "sorceress", targetName, isSeer, dayCount };
+  } else if (role === "aura_seer") {
+    const hasSpecial = !!targetRole && targetRole !== "villager" && targetRole !== "gm";
+    feedback = { type: "aura", targetName, hasSpecial, dayCount };
+  } else if (role === "pi") {
+    const isWolf = WOLF_ROLES.includes(targetRole);
+    feedback = { type: "pi", targetName, isWolf, dayCount };
+  } else if (role === "bodyguard") {
+    feedback = { type: "guard", targetName, dayCount };
+  } else if (role === "witch") {
+    const action = extraData === "heal" ? "ชุบชีวิต" : "วางยาพิษ";
+    feedback = { type: "witch", action, targetName, dayCount };
+  } else if (role === "old_hag") {
+    feedback = { type: "ban", targetName, dayCount };
+  } else if (role === "spellcaster") {
+    feedback = { type: "silence", targetName, dayCount };
+  } else if (["serial_killer","chupacabra","vampire"].includes(role)) {
+    feedback = { type: "kill_confirmed", targetName, dayCount };
+  } else if (role === "hunter") {
+    feedback = { type: "hunter_shot", targetName, dayCount };
+  } else if (role === "cult_leader") {
+    feedback = { type: "cult_recruit", targetName, dayCount };
+  } else {
+    feedback = { type: "action_confirmed", targetName, dayCount };
   }
+
+  // 3. Write feedback + seer-result to privateData
+  const privateUpdates = {};
+  if (feedback) privateUpdates["nightFeedback"] = feedback;
+
+  // Persistent seer-result update (for the seer-result box)
+  if (["seer","apprentice_seer","mystic_wolf","pi","aura_seer"].includes(role) && targetData) {
+    const isWolf = (WOLF_ROLES.includes(targetRole) && targetRole !== "wolf_man") || targetRole === "lycan";
+    privateUpdates["seerResult"] = {
+      targetId, targetName: targetData.name, targetRole, isWolf, timestamp: Date.now(),
+    };
+  }
+
+  if (Object.keys(privateUpdates).length) {
+    await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/privateData/${submittedBy}`), privateUpdates);
+  }
+
+  // 4. Hunter shot → clear hunterPending
+  if (role === "hunter") {
+    await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`), {
+      hunterPending: null,
+      hunterTarget:  targetId !== "skip" ? targetId : null,
+    });
+  }
+}
+
+export async function triggerHunterAbility(hunterId) {
+  if (!STATE.isHost) return;
+  await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`), { hunterPending: hunterId });
 }
 
 export async function rejectNightAction() {
@@ -507,5 +572,7 @@ export async function resetToLobby() {
     [`${DB_PREFIX}/rooms/${STATE.roomId}/lastElimination`]: null,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/winnerTeam`]:      null,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/privateData`]:     null,
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/hunterPending`]:   null,
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/hunterTarget`]:    null,
   });
 }
