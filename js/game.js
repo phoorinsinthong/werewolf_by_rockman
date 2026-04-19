@@ -189,12 +189,13 @@ export async function startGame() {
 
 // ─── Phase: Night (GM-triggered) ──────────────────────────────────────────────
 
+// ─── Phase: Night (GM-triggered) ──────────────────────────────────────────────
+
 export async function startNightPhase() {
   if (!STATE.isHost) return;
   const dayCount = (STATE.roomData?.dayCount || 0) + 1;
-  const nightTimer = Date.now() + 90 * 1000; // display-only countdown
+  const nightTimer = Date.now() + 120 * 1000; 
 
-  // Clear previous votes for non-GM players
   const players = STATE.roomData?.players || {};
   const voteClears = {};
   for (const id of Object.keys(players)) {
@@ -209,7 +210,16 @@ export async function startNightPhase() {
     [`${DB_PREFIX}/rooms/${STATE.roomId}/dayCount`]:        dayCount,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/timerEnd`]:        nightTimer,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions`]:    null,
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightTurn`]:       null, // Turn marker
     [`${DB_PREFIX}/rooms/${STATE.roomId}/lastElimination`]: null,
+  });
+}
+
+export async function setNightTurn(role) {
+  if (!STATE.isHost) return;
+  await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`), {
+    nightTurn: role,
+    "nightActions/pending": null // Clear any old pending when turn changes
   });
 }
 
@@ -219,20 +229,44 @@ export async function submitNightAction(role, targetId, extraData = null) {
   const roleCfg = ROLES[role];
   if (!roleCfg || roleCfg.actionPhase === "none") return;
 
+  // Instead of finalized, save to PENDING for GM review
   const payload = {
-    [`${role}Target`]: targetId,
-    [`${role}TargetDone`]: true,
+    pending: {
+      role,
+      targetId,
+      extraData,
+      submittedBy: STATE.playerId,
+      timestamp: Date.now()
+    }
   };
-  if (extraData) payload[`${role}Extra`] = extraData;
 
   await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/nightActions`), payload);
+}
 
-  // Private result logic handles special roles that get immediate feedback
+export async function approveNightAction() {
+  if (!STATE.isHost) return;
+  const room = STATE.roomData;
+  const pending = room?.nightActions?.pending;
+  if (!pending) return;
+
+  const { role, targetId, extraData, submittedBy } = pending;
+  
+  const updates = {
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions/${role}Target`]: targetId,
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions/${role}TargetDone`]: true,
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions/pending`]: null,
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightTurn`]: null, // End turn after approval
+  };
+  if (extraData) updates[`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions/${role}Extra`] = extraData;
+
+  await update(ref(db), updates);
+
+  // Provide immediate feedback for specific roles AFTER approval
   if (["seer", "mystic_wolf", "pi", "aura_seer"].includes(role) && targetId) {
     const snapshot = await get(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${targetId}`));
     const targetData = snapshot.val();
     if (targetData) {
-      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/privateData/${STATE.playerId}`), {
+      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/privateData/${submittedBy}`), {
         [`${role}Result`]: {
           targetId,
           targetName: targetData.name,
@@ -242,8 +276,13 @@ export async function submitNightAction(role, targetId, extraData = null) {
       });
     }
   }
+}
 
-  await checkNightActionsComplete();
+export async function rejectNightAction() {
+  if (!STATE.isHost) return;
+  await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/nightActions`), {
+    pending: null
+  });
 }
 
 export async function getSeerResult() {

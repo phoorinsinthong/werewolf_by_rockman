@@ -36,9 +36,9 @@ import {
   showEliminationBanner,
 } from "./room.js";
 
-import {
   startGame, startVotingPhase, startNightPhase, resetToLobby,
   gmAnnounceNightResult, announceWinner, resolveNight,
+  approveNightAction, rejectNightAction
 } from "./game.js";
 
 import { castVote, resolveVotes, gmSkipVote } from "./voting.js";
@@ -276,6 +276,18 @@ function bindGMEvents() {
   document.getElementById("gm-btn-winner-i")?.addEventListener("click", async () => {
     if (!STATE.isHost) return;
     if (confirm("ประกาศ ฝ่ายอิสระชนะ — แน่ใจหรือ?")) await announceWinner("independent");
+  });
+
+  // Night turn approval
+  document.getElementById("gm-btn-approve-action")?.addEventListener("click", async () => {
+    if (!STATE.isHost) return;
+    await approveNightAction();
+  });
+  document.getElementById("gm-btn-reject-action")?.addEventListener("click", async () => {
+    if (!STATE.isHost) return;
+    if (confirm("ต้องการปฏิเสธเป้าหมายนี้ และให้ผู้เล่นเลือกใหม่ใช่หรือไม่?")) {
+      await rejectNightAction();
+    }
   });
 }
 

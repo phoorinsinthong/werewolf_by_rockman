@@ -341,6 +341,25 @@
               <div id="gm-role-table"></div>
             </div>
 
+            <!-- Night Logic Control (visible when phase=night or night-done) -->
+            <div id="gm-night-control" class="glass-card gm-card" style="display:none">
+              <div class="gm-card-title"><span>🎭</span> เรียกใช้บทบาท (Night Turns)</div>
+              <div id="gm-night-turn-list" style="display:flex; flex-wrap:wrap; gap:8px; padding:10px 0;"></div>
+              
+              <div id="gm-pending-action" class="hidden" style="margin-top:12px; padding:12px; background:rgba(255,165,0,0.1); border:1px solid rgba(255,165,0,0.3); border-radius:8px;">
+                <p style="color:orange; font-weight:700; margin-bottom:8px;">⚖️ การกระทำที่รออนุมัติ:</p>
+                <div id="gm-pending-content" style="font-size:0.9em; margin-bottom:10px;"></div>
+                <div style="display:flex; gap:8px;">
+                  <button id="gm-btn-approve-action" class="btn btn-primary btn-sm" style="flex:1">✅ อนุมัติ</button>
+                  <button id="gm-btn-reject-action" class="btn btn-ghost btn-sm" style="flex:1; border:1px solid rgba(255,255,255,0.2)">❌ ปฏิเสธ</button>
+                </div>
+              </div>
+
+              <div id="gm-night-turn-status" style="margin-top:8px; font-size:0.85rem; color:var(--text-muted);">
+                สถานะปัจจุบัน: <span id="gm-current-turn" style="color:var(--day-gold); font-weight:700;">ยังไม่มีการเรียก</span>
+              </div>
+            </div>
+
             <!-- Night Result (visible when phase=night-done) -->
             <div id="gm-night-result" class="glass-card gm-card" style="display:none">
               <div class="gm-card-title"><span>🌙</span> ผลกลางคืน (เฉพาะ GM เห็น)</div>

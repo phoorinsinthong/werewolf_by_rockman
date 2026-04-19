@@ -10,6 +10,7 @@ import {
   startGame, getRoleConfig, startVotingPhase, startPhaseTimer, stopPhaseTimer,
   resetToLobby, getSeerResult, submitNightAction, startNightPhase,
   gmAnnounceNightResult, announceWinner, resolveNight, ROLES,
+  setNightTurn, approveNightAction, rejectNightAction
 } from "./game.js";
 import { renderVoting, castVote, resetVoteSelection, resolveVotes, gmSkipVote} from "./voting.js";
 import { initChat, setActiveChatTab } from "./chat.js";
@@ -18,6 +19,7 @@ let unsubRoom = null;
 let lastStatus = null;
 let lastPhase  = null;
 let lastPlayersStr = null;
+let lastRoleDeckCountsStr = null;
 
 // ─── Create Room ───────────────────────────────────────────────────────────────
 
@@ -167,9 +169,16 @@ export function subscribeToRoom() {
       }
     } else {
       // Data-only update (check if players or major data changed)
-      const playersStr = JSON.stringify(roomData.players || {});
-      if (playersStr !== lastPlayersStr) {
+      const playersStr   = JSON.stringify(roomData.players || {});
+      const deckCountsStr = JSON.stringify(roomData.roleDeckCounts || {});
+      
+      const playersChanged = playersStr !== lastPlayersStr;
+      const deckChanged    = deckCountsStr !== lastRoleDeckCountsStr;
+
+      if (playersChanged || deckChanged) {
         lastPlayersStr = playersStr;
+        lastRoleDeckCountsStr = deckCountsStr;
+        
         if (status === "waiting") renderLobby(roomData);
         if (status === "playing") renderGameScreenPartial(roomData);
         if (status === "ended")   renderResult(roomData);
@@ -476,12 +485,15 @@ function renderGMPanel(roomData) {
   const nightWaiting = document.getElementById("gm-night-waiting");
   if (nightWaiting) nightWaiting.style.display = phase === "night" ? "block" : "none";
 
-  // 3. Vote tally card
-  const voteSection = document.getElementById("gm-vote-section");
-  if (voteSection) {
-    voteSection.style.display = phase === "voting" ? "block" : "none";
-    if (phase === "voting") renderGMVoteTally(roomData);
+  // 3. Night Logic Control
+  const nightCtrl = document.getElementById("gm-night-control");
+  if (nightCtrl) {
+    const isNight = phase === "night" || phase === "night-done";
+    nightCtrl.style.display = isNight ? "block" : "none";
+    if (isNight) renderGMNightControl(roomData);
   }
+
+  // 4. Vote tally card
 
   // 4. Phase control button visibility
   const phaseCtrl = {
@@ -601,6 +613,66 @@ function renderGMVoteTally(roomData) {
           <div class="gm-vote-count">${count} โหวต</div>
         </div>`;
     }).join("")}`;
+}
+
+// ─── GM Night Turn Control ───────────────────────────────────────────────────
+
+function renderGMNightControl(roomData) {
+  const turnListContainer = document.getElementById("gm-night-turn-list");
+  const pendingContainer  = document.getElementById("gm-pending-action");
+  const pendingContent    = document.getElementById("gm-pending-content");
+  const currentTurnEl     = document.getElementById("gm-current-turn");
+  
+  if (!turnListContainer || !pendingContainer || !pendingContent || !currentTurnEl) return;
+
+  const players = roomData.players || {};
+  const currentTurn = roomData.nightTurn;
+  const actions = roomData.nightActions || {};
+  const dayCount = roomData.dayCount || 1;
+
+  currentTurnEl.textContent = currentTurn ? ROLES[currentTurn]?.name || currentTurn : "ยังไม่มีการเรียก";
+
+  // 1. Identify active nightly roles (alive players)
+  const activeRoles = new Set();
+  Object.values(players).forEach(p => {
+    if (p.isAlive && p.role !== "gm") {
+      const cfg = ROLES[p.role];
+      if (cfg && (cfg.actionPhase === "nightly" || (cfg.actionPhase === "firstNight" && dayCount === 1))) {
+        activeRoles.add(p.role);
+      }
+    }
+  });
+
+  // 2. Render turn buttons
+  turnListContainer.innerHTML = Array.from(activeRoles).map(roleKey => {
+    const cfg = ROLES[roleKey];
+    const isCurrent = currentTurn === roleKey;
+    const isDone = !!actions[roleKey + "TargetDone"];
+    
+    return `
+      <button class="btn ${isCurrent ? "btn-primary" : "btn-ghost"}" 
+              style="padding:6px 12px; font-size:0.85rem; border:1px solid ${isCurrent ? "transparent" : "rgba(255,255,255,0.2)"}"
+              onclick="window._setNightTurn('${roleKey}')"
+              ${isDone ? "disabled" : ""}>
+        ${cfg.icon} เรียก ${cfg.name} ${isDone ? "✅" : ""}
+      </button>
+    `;
+  }).join("");
+
+  // 3. Render Pending Action
+  const pending = actions.pending;
+  if (pending) {
+    const roleCfg = ROLES[pending.role];
+    const targetPlayer = players[pending.targetId];
+    const targetName = pending.targetId === "skip" ? "ไม่เลือกใคร (ข้าม)" : (targetPlayer ? targetPlayer.name : "???");
+    
+    pendingContainer.classList.remove("hidden");
+    let actionInfo = `<b>${roleCfg.icon} ${roleCfg.name}</b> เลือกเป้าหมาย: <b style="color:#6ee7b7">${targetName}</b>`;
+    if (pending.extraData) actionInfo += ` (${pending.extraData})`;
+    pendingContent.innerHTML = actionInfo;
+  } else {
+    pendingContainer.classList.add("hidden");
+  }
 }
 
 // ─── Player Game View ──────────────────────────────────────────────────────────
@@ -749,15 +821,51 @@ function renderNightPanel(me, players) {
   }
 
   const actionDone = !!STATE.roomData?.nightActions?.[role + "TargetDone"];
+  const isTurn     = STATE.roomData?.nightTurn === role;
+  
   if (actionDone) {
     panel.innerHTML = `<div class="night-done"><span class="check-anim">✅</span><p>ส่งการกระทำแล้ว รอ GM สรุปคืน...</p></div>`;
+    return;
+  }
+
+  if (!isTurn) {
+    panel.innerHTML = `
+      <div class="night-waiting">
+        <div class="moon-anim">🌙</div>
+        <p>คุณ (${cfg.name}) ยังไม่มีคิวใช้ความสามารถ</p>
+        <p style="color:var(--day-gold);font-size:0.84rem;font-weight:700">หลับตารอ GM เรียกชื่อคุณครับ...</p>
+      </div>`;
+    return;
+  }
+
+  const hasPending = STATE.roomData?.nightActions?.pending?.submittedBy === STATE.playerId;
+  if (hasPending) {
+    panel.innerHTML = `<div class="night-done"><span class="moon-anim">⏳</span><p>รอ GM อนุมัติการกระทำของคุณ...</p></div>`;
     return;
   }
 
   const actionLabel = `ลืมตามาปฏิบัติหน้าของคุณ (${cfg.name})`;
 
   const targets = Object.entries(players)
-    .filter(([id, p]) => p.isAlive && p.role !== "gm" && id !== STATE.playerId && (cfg.team !== "werewolf" || !["werewolf", "alpha_wolf", "dire_wolf", "lone_wolf", "mystic_wolf", "wolf_cub", "wolf_man"].includes(p.role)));
+    .filter(([id, p]) => {
+      const isSelf = id === STATE.playerId;
+      const isGM   = p.role === "gm";
+      const isAlive = p.isAlive;
+      
+      if (!isAlive || isGM) return false;
+      
+      // Allow self-target for Bodyguard (ผู้คุ้มกัน)
+      if (role === "bodyguard" && isSelf) return true;
+      
+      // Standard target restriction: not self
+      if (isSelf) return false;
+
+      // Werewolf team standard targeting restriction (not teammates)
+      const isWolfTeam = ["werewolf", "alpha_wolf", "dire_wolf", "lone_wolf", "mystic_wolf", "wolf_cub", "wolf_man"].includes(p.role);
+      if (cfg.team === "werewolf" && isWolfTeam) return false;
+
+      return true;
+    });
 
   let skipBtn = `<button class="btn btn-ghost mt-3 w-100" style="color:#d1d5db; border: 1px solid rgba(255,255,255,0.3)" onclick="window._nightAction('${role}', 'skip', this, 'skip')">ข้าม (ไม่ใช้พลัง)</button>`;
 
@@ -1030,6 +1138,9 @@ function persistSession() {
 // ─── Global Action Handlers ────────────────────────────────────────────────────
 
 window._kickPlayer = kickPlayer;
+window._setNightTurn = setNightTurn;
+window._approveAction = approveNightAction;
+window._rejectAction = rejectNightAction;
 
 window._updateDeckCount = async function (role, change) {
   if (!STATE.isHost) return;
