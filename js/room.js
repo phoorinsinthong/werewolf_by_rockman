@@ -15,6 +15,9 @@ import { renderVoting, castVote, resetVoteSelection, resolveVotes, gmSkipVote} f
 import { initChat, setActiveChatTab } from "./chat.js";
 
 let unsubRoom = null;
+let lastStatus = null;
+let lastPhase  = null;
+let lastPlayersStr = null;
 
 // ─── Create Room ───────────────────────────────────────────────────────────────
 
@@ -150,10 +153,6 @@ export function subscribeToRoom() {
         document.body.removeAttribute("data-phase");
         const roleCardContainer = document.getElementById("role-card-container");
         if (roleCardContainer) roleCardContainer.classList.remove("highlight-flip");
-        const fxEl = document.getElementById("fx-elimination");
-        if (fxEl) fxEl.className = "fx-overlay hidden";
-        const bannerEl = document.getElementById("elimination-banner");
-        if (bannerEl) bannerEl.classList.add("hidden");
         renderLobby(roomData);
       } else if (status === "playing") {
         showView("game");
@@ -167,10 +166,14 @@ export function subscribeToRoom() {
         renderResult(roomData);
       }
     } else {
-      // Same phase — re-render updated data (votes, actions, etc.)
-      if (status === "waiting")  renderLobby(roomData);
-      if (status === "playing")  renderGameScreenPartial(roomData);
-      if (status === "ended")    renderResult(roomData);
+      // Data-only update (check if players or major data changed)
+      const playersStr = JSON.stringify(roomData.players || {});
+      if (playersStr !== lastPlayersStr) {
+        lastPlayersStr = playersStr;
+        if (status === "waiting") renderLobby(roomData);
+        if (status === "playing") renderGameScreenPartial(roomData);
+        if (status === "ended")   renderResult(roomData);
+      }
     }
   });
 }
@@ -609,10 +612,16 @@ function renderPlayerGameView(phase, me, players, roomData) {
     roleCardContainer.style.display = "block";
     renderRoleCard(me, players, roomData.hostId);
     
-    // Trigger 3D flip effect on first render
+    // Trigger 3D flip effect on first render or after reset
     if (!roleCardContainer.classList.contains("highlight-flip")) {
+      // Ensure clean state before trigger
+      roleCardContainer.classList.remove("highlight-flip");
+      
+      // Use double RAF or a safe timeout to ensure display:block is applied before transformation
       setTimeout(() => {
-        roleCardContainer.classList.add("highlight-flip");
+        requestAnimationFrame(() => {
+          roleCardContainer.classList.add("highlight-flip");
+        });
       }, 500);
     }
   }
@@ -653,21 +662,29 @@ function renderPlayerGameView(phase, me, players, roomData) {
 
 function renderRoleCard(me, players, hostId) {
   const card = document.getElementById("role-card");
-  if (!card || !me?.role) return;
+  if (!card) return;
 
-  const cfg    = getRoleConfig(me.role);
-  const isDead = !me.isAlive;
+  // Fallback to villager IF the game has started but role is missing
+  // Otherwise show a loading state
+  const roleKey = me?.role || "villager";
+  const cfg     = getRoleConfig(roleKey);
+  const isDead  = me ? !me.isAlive : false;
+  
   card.className = `glass-card role-card ${isDead ? "role-dead" : ""}`;
   card.style.setProperty("--role-color", cfg.color);
 
-  const iconEl  = document.getElementById("role-icon");
-  const nameEl  = document.getElementById("role-name");
-  const descEl  = document.getElementById("role-desc");
+  const iconEl   = document.getElementById("role-icon");
+  const nameEl   = document.getElementById("role-name");
+  const descEl   = document.getElementById("role-desc");
   const wolvesEl = document.getElementById("wolf-allies");
 
   if (iconEl) iconEl.textContent = cfg.icon;
-  if (nameEl) nameEl.textContent = cfg.name;
-  if (descEl) descEl.textContent = cfg.description;
+  if (nameEl) {
+    nameEl.textContent = me?.role ? cfg.name : "กำลังเตรียมบทบาท...";
+  }
+  if (descEl) {
+    descEl.textContent = me?.role ? cfg.description : "กรุณารอสักครู่ กำลังแจกแจงบทบาทของคุณ";
+  }
 
   // Additional Intelligence
   if (wolvesEl) {
@@ -931,9 +948,15 @@ function renderResult(roomData) {
       }).join("");
   }
 
-  // Reset lobby button visibility
+  // Reset lobby button visibility (Only for Host)
   const resetBtn = document.getElementById("btn-reset-lobby");
-  if (resetBtn) resetBtn.style.display = STATE.isHost ? "" : "none";
+  if (resetBtn) {
+    if (STATE.isHost) {
+      resetBtn.classList.remove("hidden");
+    } else {
+      resetBtn.classList.add("hidden");
+    }
+  }
 }
 
 // ─── Kick / Kill Player ────────────────────────────────────────────────────────

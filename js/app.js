@@ -211,6 +211,11 @@ function bindGameEvents() {
       if (ch) window._switchChatTab?.(ch);
     });
   });
+
+  // Manual Role Card Flip
+  document.getElementById("role-card")?.addEventListener("click", () => {
+    document.getElementById("role-card-container")?.classList.toggle("highlight-flip");
+  });
 }
 
 // ─── GM Events ────────────────────────────────────────────────────────────────
