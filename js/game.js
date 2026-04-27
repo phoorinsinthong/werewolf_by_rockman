@@ -177,12 +177,14 @@ export async function startGame() {
     updates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${pId}/role`] = roleStr;
     updates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${pId}/isAlive`] = true;
     updates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${pId}/vote`] = "";
+    updates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${pId}/status`] = null;
   }
   
   // Set GM role
   updates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}/role`] = "gm";
   updates[`${DB_PREFIX}/rooms/${STATE.roomId}/status`] = "playing";
   updates[`${DB_PREFIX}/rooms/${STATE.roomId}/phase`] = "standby";
+  updates[`${DB_PREFIX}/rooms/${STATE.roomId}/lovers`] = null;
 
   await update(ref(db), updates);
 }
@@ -201,6 +203,13 @@ export async function startNightPhase() {
   for (const id of Object.keys(players)) {
     if (players[id].role !== "gm") {
       voteClears[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}/vote`] = "";
+      // Clear nightly status effects (silenced wears off each night)
+      if (players[id].status?.silenced) {
+        voteClears[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}/status/silenced`] = null;
+      }
+      if (players[id].status?.banned) {
+        voteClears[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}/status/banned`] = null;
+      }
     }
   }
 
@@ -303,6 +312,8 @@ export async function approveNightAction() {
     feedback = { type: "ban", targetName, dayCount };
   } else if (role === "spellcaster") {
     feedback = { type: "silence", targetName, dayCount };
+  } else if (role === "cupid") {
+    feedback = { type: "cupid_pair", targetName, dayCount };
   } else if (["serial_killer","chupacabra","vampire"].includes(role)) {
     feedback = { type: "kill_confirmed", targetName, dayCount };
   } else if (role === "hunter") {
@@ -329,7 +340,38 @@ export async function approveNightAction() {
     await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/privateData/${submittedBy}`), privateUpdates);
   }
 
-  // 4. Hunter shot → clear hunterPending
+  // 4. Spellcaster → set silenced status on target
+  if (role === "spellcaster" && targetId && targetId !== "skip") {
+    await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${targetId}/status`), {
+      silenced: true,
+    });
+  }
+
+  // 5. Old Hag → set banned status on target
+  if (role === "old_hag" && targetId && targetId !== "skip") {
+    await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${targetId}/status`), {
+      banned: true,
+    });
+  }
+
+  // 6. Cupid → set lovers status on both targets
+  if (role === "cupid" && targetId && targetId !== "skip") {
+    const cupidTargets = targetId.split(",");
+    if (cupidTargets.length === 2) {
+      const [lover1, lover2] = cupidTargets;
+      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`), {
+        lovers: { player1: lover1, player2: lover2 },
+      });
+      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${lover1}/status`), {
+        lover: lover2,
+      });
+      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${lover2}/status`), {
+        lover: lover1,
+      });
+    }
+  }
+
+  // 7. Hunter shot → clear hunterPending
   if (role === "hunter") {
     await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`), {
       hunterPending: null,
@@ -561,6 +603,7 @@ export async function resetToLobby() {
     resetUpdates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}/isAlive`] = true;
     resetUpdates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}/vote`]    = "";
     resetUpdates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}/isReady`] = false;
+    resetUpdates[`${DB_PREFIX}/rooms/${STATE.roomId}/players/${id}/status`]  = null;
   }
   await update(ref(db), {
     ...resetUpdates,
@@ -574,5 +617,6 @@ export async function resetToLobby() {
     [`${DB_PREFIX}/rooms/${STATE.roomId}/privateData`]:     null,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/hunterPending`]:   null,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/hunterTarget`]:    null,
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/lovers`]:          null,
   });
 }

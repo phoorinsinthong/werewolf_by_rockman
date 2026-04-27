@@ -1784,3 +1784,123 @@ label {
   margin-top: 6px;
   line-height: 1.4;
 }
+
+/* ─── Status Badges (Silenced, Banned, Lover) ─────────────────────────────── */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.65rem;
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-weight: 700;
+  font-family: 'Kanit', sans-serif;
+  letter-spacing: 0.02em;
+  animation: status-pop 0.4s var(--transition-bounce) both;
+  vertical-align: middle;
+}
+@keyframes status-pop {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+.status-silenced {
+  background: rgba(139, 92, 246, 0.15);
+  color: #c4b5fd;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+.status-banned {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+.status-lover {
+  background: rgba(244, 63, 94, 0.15);
+  color: #fda4af;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  animation: status-pop 0.4s var(--transition-bounce) both, lover-glow 2s ease-in-out infinite alternate;
+}
+@keyframes lover-glow {
+  from { box-shadow: 0 0 4px rgba(244, 63, 94, 0.2); }
+  to   { box-shadow: 0 0 12px rgba(244, 63, 94, 0.5); }
+}
+
+/* Sidebar mini badges */
+.sb-badge {
+  font-size: 0.72rem;
+  margin-left: 2px;
+  vertical-align: middle;
+  display: inline-block;
+  animation: status-pop 0.3s var(--transition-bounce) both;
+}
+.sb-silenced { filter: drop-shadow(0 0 4px rgba(139, 92, 246, 0.6)); }
+.sb-banned   { filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.5)); }
+.sb-lover    { filter: drop-shadow(0 0 4px rgba(244, 63, 94, 0.6)); animation: status-pop 0.3s var(--transition-bounce) both, lover-pulse 1.5s ease-in-out infinite; }
+@keyframes lover-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.2); }
+}
+
+/* Vote panel status badges container */
+.vote-status-badges {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: -2px;
+}
+
+/* Silenced player day panel overlay */
+.day-silenced-msg {
+  padding: 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.day-silenced-msg .silenced-icon {
+  font-size: 3rem;
+  animation: silenced-shake 1.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 16px rgba(139, 92, 246, 0.7));
+}
+@keyframes silenced-shake {
+  0%, 100% { transform: rotate(0); }
+  25%      { transform: rotate(-8deg); }
+  75%      { transform: rotate(8deg); }
+}
+.day-silenced-msg h4 {
+  font-family: 'Kanit', sans-serif;
+  color: #c4b5fd;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.day-silenced-msg p {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* Lover death notification */
+.lover-death-banner {
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.15), rgba(190, 18, 60, 0.1));
+  border: 1px solid rgba(244, 63, 94, 0.4);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-top: 8px;
+  text-align: center;
+  animation: feedback-pop 0.5s var(--transition-bounce) both;
+}
+.lover-death-banner span {
+  color: #fda4af;
+  font-weight: 700;
+  font-family: 'Kanit', sans-serif;
+  font-size: 0.88rem;
+}
+
+/* Prince saved banner styling */
+#elimination-banner.prince-saved {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(217, 119, 6, 0.1)) !important;
+  border-color: rgba(251, 191, 36, 0.5) !important;
+  color: #fde68a !important;
+}

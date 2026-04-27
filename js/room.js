@@ -615,6 +615,7 @@ function renderGMRoleTable(players, hostId) {
 
   const ids   = Object.keys(players);
   const nonGM = ids.filter(id => id !== hostId);
+  const lovers = STATE.roomData?.lovers;
 
   // Count votes for tooltip
   const voteMap = {};
@@ -627,10 +628,21 @@ function renderGMRoleTable(players, hostId) {
     const cfg  = getRoleConfig(p.role || "villager");
     const dead = !p.isAlive;
     const votes = voteMap[id] ? `<span style="background:rgba(239,68,68,0.2);color:#f87171;padding:2px 6px;border-radius:4px;font-size:0.75em;margin-left:4px">${voteMap[id]}🗳️</span>` : "";
+    
+    // Status badges
+    const status = p.status || {};
+    let statusHtml = "";
+    if (status.silenced) statusHtml += `<span class="status-badge status-silenced" style="margin-left:4px">🤐</span>`;
+    if (status.banned) statusHtml += `<span class="status-badge status-banned" style="margin-left:4px">🚫</span>`;
+    if (status.lover) {
+      const loverName = players[status.lover]?.name || "?";
+      statusHtml += `<span class="status-badge status-lover" style="margin-left:4px" title="คู่รัก: ${escapeHtml(loverName)}">💘</span>`;
+    }
+    
     return `
       <div class="gm-role-row ${dead ? "gm-status-dead" : ""}">
         <div class="gm-role-avatar" style="background:${cfg.color}22;color:${cfg.color}">${p.name.charAt(0).toUpperCase()}</div>
-        <div class="gm-player-name">${escapeHtml(p.name)}${votes} ${dead ? "💀" : ""}</div>
+        <div class="gm-player-name">${escapeHtml(p.name)}${statusHtml}${votes} ${dead ? "💀" : ""}</div>
         <div class="gm-role-badge" style="border-color:${cfg.color};color:${cfg.color};background:${cfg.color}15">${cfg.icon} ${cfg.name}</div>
         <button class="btn ${dead ? 'btn-primary' : 'btn-danger'} btn-sm" style="padding:3px 10px; font-size:0.78em; margin-left:8px;" onclick="window._togglePlayerAlive('${id}', ${dead})">${dead ? "ชุบ" : "ฆ่า"}</button>
       </div>`;
@@ -854,6 +866,26 @@ function renderRoleCard(me, players, hostId) {
       if (allies.length) {
         wolvesEl.classList.remove("hidden");
         wolvesEl.innerHTML = `🔮 หมอดูตัวจริงคือ: <b>${allies.join(", ")}</b>`;
+      }
+    }
+    
+    // Show lover info on role card
+    const myStatus = me?.status || {};
+    if (myStatus.lover) {
+      const loverPlayer = players[myStatus.lover];
+      if (loverPlayer) {
+        const loverDiv = document.createElement('div');
+        loverDiv.className = 'wolf-allies';
+        loverDiv.style.cssText = 'margin-top:10px;background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.25);color:#fda4af;';
+        loverDiv.innerHTML = `💘 คู่รักของคุณ: <b>${escapeHtml(loverPlayer.name)}</b> <span style="font-size:0.78em;color:var(--text-muted)">— หากคนใดคนหนึ่งตาย อีกคนจะตายตาม</span>`;
+        // Insert after wolf-allies if it exists, or after the card header
+        const cardFront = document.querySelector('.role-card-front');
+        if (cardFront && !document.getElementById('lover-info-display')) {
+          loverDiv.id = 'lover-info-display';
+          cardFront.appendChild(loverDiv);
+        } else if (document.getElementById('lover-info-display')) {
+          document.getElementById('lover-info-display').innerHTML = loverDiv.innerHTML;
+        }
       }
     }
   }
@@ -1086,6 +1118,12 @@ function buildNightFeedbackHTML(feedback) {
       "rgba(16,185,129,0.3)", "rgba(16,185,129,0.08)");
   }
 
+  if (T === "cupid_pair") {
+    return card("💘", "จับคู่รักสำเร็จ!", "#f43f5e",
+      `<p style="margin:4px 0">${name}</p><p class="nf-sub">ทั้งสองคนกลายเป็นคู่รักกันแล้ว ❤️ หากคนใดคนหนึ่งตาย อีกคนจะตายตามไปด้วย!</p>`,
+      "rgba(244,63,94,0.3)", "rgba(244,63,94,0.08)");
+  }
+
   // default fallback
   return `<div class="night-done"><span class="check-anim">✅</span><p>GM อนุมัติแล้ว!</p><p class="nf-sub">รอประกาศตอนเช้า</p></div>`;
 }
@@ -1127,6 +1165,30 @@ function renderDayPanel(me) {
     panel.innerHTML = `<div class="day-dead-msg">💀 คุณถูกตัดสิทธิ์แล้ว ยังดูแลคุยได้ในช่อง "ผีสิง" นะ</div>`;
     return;
   }
+  
+  const isSilenced = me.status?.silenced;
+  const isBanned = me.status?.banned;
+  
+  if (isSilenced) {
+    panel.innerHTML = `
+      <div class="day-silenced-msg">
+        <div class="silenced-icon">🤐</div>
+        <h4>คุณถูกปิดปากโดยผู้ร่ายเวทย์!</h4>
+        <p>คุณไม่สามารถพูดหรือโหวตได้ในวันนี้ นั่งฟังและรอคืนถัดไป...</p>
+      </div>`;
+    return;
+  }
+  
+  if (isBanned) {
+    panel.innerHTML = `
+      <div class="day-silenced-msg">
+        <div class="silenced-icon">🚫</div>
+        <h4>คุณถูกแบนโดยหญิงชรา!</h4>
+        <p>คุณไม่มีสิทธิ์โหวตในวันนี้ แต่ยังพูดคุยได้ตามปกติ</p>
+      </div>`;
+    return;
+  }
+  
   panel.innerHTML = `
     <div class="day-instructions">
       <div class="day-sun-icon">☀️</div>
@@ -1159,6 +1221,7 @@ function renderPlayerSidebar(players, hostId) {
   if (!list) return;
 
   const myRole = players[STATE.playerId]?.role || "";
+  const lovers = STATE.roomData?.lovers;
 
   list.innerHTML = Object.entries(players)
     .filter(([id]) => id !== hostId)  // exclude GM from sidebar
@@ -1169,10 +1232,18 @@ function renderPlayerSidebar(players, hostId) {
       if (myRole === "werewolf" && p.role === "werewolf" && !isMe) {
         roleHint = `<span class="wolf-hint">🐺</span>`;
       }
+      
+      // Status badges for sidebar
+      const pStatus = p.status || {};
+      let statusBadges = "";
+      if (pStatus.silenced) statusBadges += `<span class="sb-badge sb-silenced">🤐</span>`;
+      if (pStatus.banned) statusBadges += `<span class="sb-badge sb-banned">🚫</span>`;
+      if (pStatus.lover) statusBadges += `<span class="sb-badge sb-lover">💘</span>`;
+      
       return `
         <div class="player-status player-${status} ${isMe ? "player-me" : ""}">
           <div class="ps-avatar ${status}">${p.name.charAt(0).toUpperCase()}</div>
-          <span class="ps-name">${escapeHtml(p.name)} ${isMe ? "<em>(คุณ)</em>" : ""} ${roleHint}</span>
+          <span class="ps-name">${escapeHtml(p.name)} ${isMe ? "<em>(คุณ)</em>" : ""} ${roleHint} ${statusBadges}</span>
           <span class="ps-status">${p.isAlive ? "" : "💀"}</span>
         </div>`;
     }).join("");
@@ -1202,8 +1273,9 @@ export function showEliminationBanner(elim) {
     text = `🗳️ ${elim.playerName} ถูกโหวตไล่ออก! พวกเขาคือ ${getRoleConfig(elim.playerRole).name}`;
     isKill = true; fxType = "active-vote";
   }
-  else if (elim.reason === "tie")       text = "🗳️ โหวตเสมอ! ไม่มีผู้ถูกกำจัดในรอบนี้";
-  else if (elim.reason === "skipped")   text = "🗳️ GM ข้ามรอบโหวต";
+  else if (elim.reason === "tie")           text = "🗳️ โหวตเสมอ! ไม่มีผู้ถูกกำจัดในรอบนี้";
+  else if (elim.reason === "skipped")       text = "🗳️ GM ข้ามรอบโหวต";
+  else if (elim.reason === "prince_saved")  text = `👑 ${elim.playerName} ถูกโหวต แต่รอดชีวิต! เพราะเขาคือเจ้าชาย 👑`;
   else {
     text = elim.playerName ? `${elim.playerName} ถูกกำจัดออก` : "";
     if (elim.playerName) { isKill = true; fxType = "active-vote"; }
@@ -1304,6 +1376,23 @@ window._togglePlayerAlive = async function(id, isDead) {
     const player = STATE.roomData?.players?.[id];
     if (player?.role === "hunter") {
       await triggerHunterAbility(id);
+    }
+    
+    // Check lover death (Cupid mechanic)
+    const lovers = STATE.roomData?.lovers;
+    if (lovers) {
+      const { player1, player2 } = lovers;
+      if (id === player1) {
+        const loverData = STATE.roomData?.players?.[player2];
+        if (loverData?.isAlive) {
+          await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${player2}`), { isAlive: false });
+        }
+      } else if (id === player2) {
+        const loverData = STATE.roomData?.players?.[player1];
+        if (loverData?.isAlive) {
+          await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${player1}`), { isAlive: false });
+        }
+      }
     }
   } else {
     // Revived — clear hunterPending if it was them

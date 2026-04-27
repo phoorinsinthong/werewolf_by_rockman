@@ -30,6 +30,8 @@ export async function castVote() {
   if (!selectedVoteTarget) return;
   const me = STATE.roomData?.players?.[STATE.playerId];
   if (!me?.isAlive || me.vote) return;
+  // Silenced or banned players cannot vote
+  if (me.status?.silenced || me.status?.banned) return;
 
   await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}`), {
     vote: selectedVoteTarget,
@@ -47,14 +49,21 @@ export function renderVoting(roomData) {
   const hostId      = roomData.hostId;
   const me          = players[STATE.playerId];
   const myVote      = me?.vote;
+  const isSilenced  = me?.status?.silenced;
+  const isBanned    = me?.status?.banned;
+  const isRestricted = isSilenced || isBanned;
 
   // Alive, non-GM players eligible
   const alivePlayers = Object.entries(players)
     .filter(([, p]) => p.isAlive && p.role !== "gm");
 
+  // Use mayor double-vote logic
   const voteTally = {};
   for (const [, p] of alivePlayers) {
-    if (p.vote) voteTally[p.vote] = (voteTally[p.vote] || 0) + 1;
+    if (p.vote) {
+      const voteWeight = p.role === "mayor" ? 2 : 1;
+      voteTally[p.vote] = (voteTally[p.vote] || 0) + voteWeight;
+    }
   }
 
   const totalVoters = alivePlayers.filter(([id]) => id !== STATE.playerId).length;
@@ -74,15 +83,22 @@ export function renderVoting(roomData) {
       const voteCount  = voteTally[id] || 0;
       const isSelected = selectedVoteTarget === id || myVote === id;
       const pct        = alivePlayers.length > 1 ? Math.round((voteCount / (alivePlayers.length - 1)) * 100) : 0;
+      // Status badges
+      const pStatus = p.status || {};
+      let statusBadge = "";
+      if (pStatus.silenced) statusBadge += `<span class="status-badge status-silenced">🤐 ใบ้</span>`;
+      if (pStatus.banned) statusBadge += `<span class="status-badge status-banned">🚫 แบน</span>`;
+      if (pStatus.lover) statusBadge += `<span class="status-badge status-lover">💘 คู่รัก</span>`;
       return `
         <button
-          class="vote-card ${isSelected ? "vote-selected" : ""} ${hasVoted || isDead ? "vote-locked" : ""}"
+          class="vote-card ${isSelected ? "vote-selected" : ""} ${hasVoted || isDead || isRestricted ? "vote-locked" : ""}"
           onclick="window.selectVote('${id}')"
-          ${hasVoted || isDead ? "disabled" : ""}
+          ${hasVoted || isDead || isRestricted ? "disabled" : ""}
           id="vote-card-${id}"
         >
           <div class="vote-avatar">${p.name.charAt(0).toUpperCase()}</div>
           <div class="vote-name">${escapeHtml(p.name)}</div>
+          ${statusBadge ? `<div class="vote-status-badges">${statusBadge}</div>` : ""}
           <div class="vote-bar-wrap">
             <div class="vote-bar" style="width:${pct}%"></div>
           </div>
@@ -91,8 +107,13 @@ export function renderVoting(roomData) {
     }).join("");
 
   if (submitBtn) {
-    submitBtn.disabled = hasVoted || !selectedVoteTarget || isDead;
-    submitBtn.querySelector(".front").textContent = hasVoted ? "✅ โหวตแล้ว — รอ GM ประกาศ" : "ยืนยันการโหวต";
+    submitBtn.disabled = hasVoted || !selectedVoteTarget || isDead || isRestricted;
+    const front = submitBtn.querySelector(".front") || submitBtn;
+    if (isRestricted) {
+      front.textContent = isSilenced ? "🤐 คุณถูกปิดปาก — โหวตไม่ได้" : "🚫 คุณถูกแบน — โหวตไม่ได้";
+    } else {
+      front.textContent = hasVoted ? "✅ โหวตแล้ว — รอ GM ประกาศ" : "ยืนยันการโหวต";
+    }
   }
 }
 
@@ -107,9 +128,13 @@ export async function resolveVotes() {
   const alivePlayers = Object.entries(players)
     .filter(([, p]) => p.isAlive && p.role !== "gm");
 
+  // Mayor's vote counts as 2
   const voteTally = {};
   for (const [, p] of alivePlayers) {
-    if (p.vote) voteTally[p.vote] = (voteTally[p.vote] || 0) + 1;
+    if (p.vote) {
+      const voteWeight = p.role === "mayor" ? 2 : 1;
+      voteTally[p.vote] = (voteTally[p.vote] || 0) + voteWeight;
+    }
   }
 
   // Find player with most votes
@@ -124,7 +149,22 @@ export async function resolveVotes() {
   if (topIds.length > 1) topId = null;
 
   if (topId) {
-    await eliminatePlayer(topId, "vote", players[topId]);
+    // Prince survives execution once
+    const target = players[topId];
+    if (target?.role === "prince" && !target?.status?.princeUsed) {
+      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${topId}/status`), { princeUsed: true });
+      await clearVotes();
+      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`), {
+        phase:           "standby",
+        timerEnd:        null,
+        lastElimination: {
+          playerId: topId, playerName: target.name, playerRole: target.role,
+          reason: "prince_saved", timestamp: Date.now(),
+        },
+      });
+    } else {
+      await eliminatePlayer(topId, "vote", players[topId]);
+    }
   } else {
     // Tie or no votes → no elimination, move to standby
     await clearVotes();
@@ -173,13 +213,32 @@ async function eliminatePlayer(playerId, reason, playerData) {
   await postEliminationFlow(playerId);
 }
 
-// ─── Post Elimination (win check → standby or end) ────────────────────────────
+// ─── Post Elimination (win check → standby or end + lover death) ──────────────
 
 async function postEliminationFlow(eliminatedId) {
   await clearVotes();
+  
+  // Check lover death (Cupid mechanic)
+  const roomSnap = await get(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`));
+  const roomData = roomSnap.val() || {};
+  const players  = roomData.players || {};
+  const lovers   = roomData.lovers;
+  
+  if (lovers) {
+    const { player1, player2 } = lovers;
+    if (eliminatedId === player1 && players[player2]?.isAlive) {
+      // Lover dies together
+      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${player2}`), { isAlive: false });
+    } else if (eliminatedId === player2 && players[player1]?.isAlive) {
+      // Lover dies together
+      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${player1}`), { isAlive: false });
+    }
+  }
+  
+  // Re-fetch players after potential lover death
   const snapshot = await get(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players`));
-  const players  = snapshot.val() || {};
-  const winner   = checkWinCondition(players);
+  const updatedPlayers = snapshot.val() || {};
+  const winner   = checkWinCondition(updatedPlayers);
 
   if (winner) {
     await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`), {
