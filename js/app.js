@@ -4,7 +4,7 @@
  */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged }
+import { getAuth, signInAnonymously, onAuthStateChanged, browserLocalPersistence, setPersistence }
   from "https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-database.js";
 import { FIREBASE_CONFIG, DB_PREFIX as _DB_PREFIX }
@@ -46,6 +46,8 @@ import { castVote, resolveVotes, gmSkipVote } from "./voting.js";
 
 // ─── App Init ──────────────────────────────────────────────────────────────────
 
+let _appInitialized = false; // Prevent duplicate reconnect on re-auth
+
 document.addEventListener("DOMContentLoaded", () => {
   showLoadingScreen(true);
 
@@ -56,13 +58,20 @@ document.addEventListener("DOMContentLoaded", () => {
     showHomeError("การเชื่อมต่อเซิร์ฟเวอร์ล่าช้า กรุณาตรวจสอบอินเทอร์เน็ตหรือบังคับรีเฟรช (Ctrl+F5)");
   }, 8000);
 
+  // Set persistence to LOCAL so anonymous UID survives screen lock/tab backgrounding
+  setPersistence(auth, browserLocalPersistence)
+    .catch(err => console.warn("Auth persistence warning:", err));
+
   onAuthStateChanged(auth, (user) => {
     clearTimeout(authTimeout);
     if (user) {
       STATE.authUser = user;
       STATE.playerId = user.uid;
       showLoadingScreen(false);
-      tryReconnect();
+      if (!_appInitialized) {
+        _appInitialized = true;
+        tryReconnect();
+      }
     } else {
       signInAnonymously(auth).catch(err => {
         showLoadingScreen(false);
@@ -70,6 +79,15 @@ document.addEventListener("DOMContentLoaded", () => {
         showHomeError("การเชื่อมต่อล้มเหลว กรุณารีเฟรชหน้าเว็บ");
         console.error(err);
       });
+    }
+  });
+
+  // ─── Visibility Change: auto-reconnect when phone screen is unlocked ─────
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && STATE.roomId && STATE.playerId) {
+      // Page became visible again — silently re-subscribe to room to restore realtime connection
+      console.log("[Werewolf] Page visible again, re-subscribing to room:", STATE.roomId);
+      subscribeToRoom();
     }
   });
 
@@ -91,6 +109,21 @@ async function tryReconnect() {
       STATE.playerName = saved.playerName;
       STATE.isHost     = saved.isHost;
 
+      // Try silent auto-reconnect first
+      try {
+        const { get, ref } = await import("https://www.gstatic.com/firebasejs/10.9.0/firebase-database.js");
+        const snapshot = await get(ref(db, `${DB_PREFIX}/rooms/${saved.roomId}/players/${saved.playerId}`));
+        if (snapshot.exists()) {
+          // Player still in room — reconnect silently
+          console.log("[Werewolf] Auto-reconnecting to room:", saved.roomId);
+          await reconnectToRoom();
+          return;
+        }
+      } catch (e) {
+        console.warn("[Werewolf] Silent reconnect failed, showing banner:", e);
+      }
+
+      // Fallback: show reconnect banner
       const banner = document.getElementById("reconnect-banner");
       if (banner) {
         banner.classList.remove("hidden");

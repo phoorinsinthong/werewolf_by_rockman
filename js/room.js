@@ -155,6 +155,22 @@ export function subscribeToRoom() {
         document.body.removeAttribute("data-phase");
         const roleCardContainer = document.getElementById("role-card-container");
         if (roleCardContainer) roleCardContainer.classList.remove("highlight-flip");
+        // Clear all client-side cached state to prevent stale data between games
+        lastPlayersStr = null;
+        lastRoleDeckCountsStr = null;
+        subscribeToRoom._lastNightActions = null;
+        subscribeToRoom._lastNightTurn = null;
+        subscribeToRoom._lastHunter = null;
+        subscribeToRoom._lastPrivate = null;
+        selectedNightTargets = [];
+        resetVoteSelection();
+        // Clean up stale DOM elements from previous game
+        const loverInfo = document.getElementById('lover-info-display');
+        if (loverInfo) loverInfo.remove();
+        const seerResult = document.getElementById('seer-result');
+        if (seerResult) seerResult.classList.add('hidden');
+        const elimBanner = document.getElementById('elimination-banner');
+        if (elimBanner) elimBanner.classList.add('hidden');
         renderLobby(roomData);
       } else if (status === "playing") {
         showView("game");
@@ -1443,6 +1459,18 @@ function resetState() {
   STATE.roomData   = null;
   STATE.playerName = "";
   STATE.isHost     = false;
+  // Clear all module-level cached state
+  lastPlayersStr = null;
+  lastRoleDeckCountsStr = null;
+  lastStatus = null;
+  lastPhase  = null;
+  subscribeToRoom._lastNightActions = null;
+  subscribeToRoom._lastNightTurn = null;
+  subscribeToRoom._lastHunter = null;
+  subscribeToRoom._lastPrivate = null;
+  selectedNightTargets = [];
+  resetVoteSelection();
+  try { localStorage.removeItem("ww_session"); } catch (_) {}
 }
 
 function persistSession() {

@@ -612,11 +612,14 @@ export async function resetToLobby() {
     [`${DB_PREFIX}/rooms/${STATE.roomId}/dayCount`]:        0,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/timerEnd`]:        null,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/nightActions`]:    null,
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/nightTurn`]:       null,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/lastElimination`]: null,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/winnerTeam`]:      null,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/privateData`]:     null,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/hunterPending`]:   null,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/hunterTarget`]:    null,
     [`${DB_PREFIX}/rooms/${STATE.roomId}/lovers`]:          null,
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/roleDeckCounts`]:  null,
+    [`${DB_PREFIX}/rooms/${STATE.roomId}/chat`]:            null,
   });
 }
