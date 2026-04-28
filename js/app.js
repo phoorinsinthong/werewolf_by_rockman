@@ -4,9 +4,10 @@
  */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged, browserLocalPersistence, setPersistence }
+import { getAuth, signInAnonymously, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-database.js";
+import { ref, get, remove } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-database.js";
 import { FIREBASE_CONFIG, DB_PREFIX as _DB_PREFIX }
   from "./firebase-config.js";
 
@@ -46,7 +47,7 @@ import { castVote, resolveVotes, gmSkipVote } from "./voting.js";
 
 // ─── App Init ──────────────────────────────────────────────────────────────────
 
-let _appInitialized = false; // Prevent duplicate reconnect on re-auth
+let _authReady = false; // Tracks if initial auth has completed
 
 document.addEventListener("DOMContentLoaded", () => {
   showLoadingScreen(true);
@@ -58,18 +59,16 @@ document.addEventListener("DOMContentLoaded", () => {
     showHomeError("การเชื่อมต่อเซิร์ฟเวอร์ล่าช้า กรุณาตรวจสอบอินเทอร์เน็ตหรือบังคับรีเฟรช (Ctrl+F5)");
   }, 8000);
 
-  // Set persistence to LOCAL so anonymous UID survives screen lock/tab backgrounding
-  setPersistence(auth, browserLocalPersistence)
-    .catch(err => console.warn("Auth persistence warning:", err));
-
   onAuthStateChanged(auth, (user) => {
     clearTimeout(authTimeout);
     if (user) {
       STATE.authUser = user;
       STATE.playerId = user.uid;
       showLoadingScreen(false);
-      if (!_appInitialized) {
-        _appInitialized = true;
+      // Only run reconnect on FIRST auth event
+      // Subsequent auth events (e.g. token refresh after screen lock) should not reset the UI
+      if (!_authReady) {
+        _authReady = true;
         tryReconnect();
       }
     } else {
@@ -82,21 +81,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ─── Visibility Change: auto-reconnect when phone screen is unlocked ─────
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && STATE.roomId && STATE.playerId) {
-      // Page became visible again — silently re-subscribe to room to restore realtime connection
-      console.log("[Werewolf] Page visible again, re-subscribing to room:", STATE.roomId);
-      subscribeToRoom();
-    }
-  });
-
   bindHomeEvents();
   bindLobbyEvents();
   bindGameEvents();
   bindGMEvents();
   bindResultEvents();
   bindModalEvents();
+  bindAdminEvents();
+  bindVisibilityHandler();
 });
 
 // ─── Reconnect ─────────────────────────────────────────────────────────────────
@@ -109,21 +101,16 @@ async function tryReconnect() {
       STATE.playerName = saved.playerName;
       STATE.isHost     = saved.isHost;
 
-      // Try silent auto-reconnect first
+      // Auto-reconnect: directly re-subscribe instead of showing banner
       try {
-        const { get, ref } = await import("https://www.gstatic.com/firebasejs/10.9.0/firebase-database.js");
-        const snapshot = await get(ref(db, `${DB_PREFIX}/rooms/${saved.roomId}/players/${saved.playerId}`));
-        if (snapshot.exists()) {
-          // Player still in room — reconnect silently
-          console.log("[Werewolf] Auto-reconnecting to room:", saved.roomId);
-          await reconnectToRoom();
-          return;
-        }
-      } catch (e) {
-        console.warn("[Werewolf] Silent reconnect failed, showing banner:", e);
+        await reconnectToRoom();
+        console.log("[WW] Auto-reconnected to room", saved.roomId);
+        return;
+      } catch (err) {
+        console.warn("[WW] Auto-reconnect failed, showing banner", err);
       }
 
-      // Fallback: show reconnect banner
+      // Fallback: show reconnect banner if auto-reconnect failed
       const banner = document.getElementById("reconnect-banner");
       if (banner) {
         banner.classList.remove("hidden");
@@ -135,6 +122,65 @@ async function tryReconnect() {
     }
   } catch (_) {}
   showView("home"); // Show home by default
+}
+
+// ─── Visibility & Wake-up Handler ──────────────────────────────────────────────
+// When mobile screen locks/unlocks or tab goes to background/foreground,
+// Firebase WebSocket may disconnect. This handler re-establishes the subscription.
+
+function bindVisibilityHandler() {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      handleAppWakeUp();
+    }
+  });
+
+  // Also handle page focus (some mobile browsers use this instead)
+  window.addEventListener("focus", () => {
+    handleAppWakeUp();
+  });
+}
+
+let _lastWakeUp = 0;
+async function handleAppWakeUp() {
+  // Debounce: don't run more than once per 3 seconds
+  const now = Date.now();
+  if (now - _lastWakeUp < 3000) return;
+  _lastWakeUp = now;
+
+  // If we're in a room, verify we're still connected and re-subscribe if needed
+  if (!STATE.roomId || !STATE.playerId) return;
+
+  console.log("[WW] App woke up, verifying room connection...");
+
+  try {
+    // Check if our player still exists in the room
+    const snapshot = await get(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}`));
+    if (!snapshot.exists()) {
+      // Room or player was deleted while we were asleep
+      const roomSnap = await get(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`));
+      if (!roomSnap.exists()) {
+        console.log("[WW] Room no longer exists");
+        clearSession();
+        resetState();
+        showView("home");
+        return;
+      }
+      // Room exists but player was removed — try to re-add if we have session
+      console.log("[WW] Player removed from room, attempting to re-join...");
+      const saved = JSON.parse(localStorage.getItem("ww_session") || "null");
+      if (saved?.roomId === STATE.roomId) {
+        await reconnectToRoom();
+      }
+      return;
+    }
+
+    // Player exists — re-subscribe to keep the listener fresh
+    console.log("[WW] Still in room, refreshing subscription");
+    subscribeToRoom();
+  } catch (err) {
+    console.warn("[WW] Wake-up check failed:", err);
+  }
 }
 
 // ─── Home Events ───────────────────────────────────────────────────────────────
@@ -387,4 +433,187 @@ function bindModalEvents() {
 
 function clearSession() {
   try { localStorage.removeItem("ww_session"); } catch (_) {}
+}
+
+// ─── Admin Panel ───────────────────────────────────────────────────────────────
+
+const ADMIN_PASSWORD = "admin123";
+
+function bindAdminEvents() {
+  // Open admin modal
+  document.getElementById("btn-open-admin")?.addEventListener("click", () => {
+    openAdminModal();
+  });
+
+  // Close admin modal
+  document.getElementById("btn-admin-close")?.addEventListener("click", () => {
+    closeAdminModal();
+  });
+
+  // Login with password
+  document.getElementById("btn-admin-login")?.addEventListener("click", () => {
+    adminLogin();
+  });
+
+  // Enter key on password input
+  document.getElementById("admin-password-input")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") adminLogin();
+  });
+
+  // Reset all rooms button
+  document.getElementById("btn-admin-reset-all")?.addEventListener("click", () => {
+    showAdminStep("confirm");
+  });
+
+  // Back to password
+  document.getElementById("btn-admin-back")?.addEventListener("click", () => {
+    closeAdminModal();
+  });
+
+  // Confirm reset
+  document.getElementById("btn-admin-confirm-reset")?.addEventListener("click", async () => {
+    await adminResetAllRooms();
+  });
+
+  // Cancel reset
+  document.getElementById("btn-admin-cancel-reset")?.addEventListener("click", () => {
+    showAdminStep("rooms");
+    adminLoadRooms();
+  });
+
+  // Done (success)
+  document.getElementById("btn-admin-done")?.addEventListener("click", () => {
+    closeAdminModal();
+  });
+}
+
+function openAdminModal() {
+  const modal = document.getElementById("admin-modal");
+  if (!modal) return;
+  modal.classList.remove("hidden");
+  showAdminStep("password");
+  const pwInput = document.getElementById("admin-password-input");
+  if (pwInput) { pwInput.value = ""; pwInput.focus(); }
+  document.getElementById("admin-password-error")?.classList.add("hidden");
+}
+
+function closeAdminModal() {
+  document.getElementById("admin-modal")?.classList.add("hidden");
+}
+
+function showAdminStep(step) {
+  ["password", "rooms", "confirm", "success"].forEach(s => {
+    const el = document.getElementById(`admin-step-${s}`);
+    if (el) el.classList.toggle("hidden", s !== step);
+  });
+}
+
+function adminLogin() {
+  const pw = document.getElementById("admin-password-input")?.value || "";
+  if (pw === ADMIN_PASSWORD) {
+    showAdminStep("rooms");
+    adminLoadRooms();
+  } else {
+    const errEl = document.getElementById("admin-password-error");
+    if (errEl) {
+      errEl.classList.remove("hidden");
+      // Re-trigger shake animation
+      errEl.style.animation = "none";
+      errEl.offsetHeight; // Force reflow
+      errEl.style.animation = "shake 0.3s ease";
+    }
+  }
+}
+
+async function adminLoadRooms() {
+  const listEl = document.getElementById("admin-room-list");
+  if (!listEl) return;
+
+  listEl.innerHTML = `
+    <div class="admin-room-loading">
+      <div class="spinner-ring" style="width:32px;height:32px;position:relative;margin:0 auto 10px;"></div>
+      <span>กำลังโหลด...</span>
+    </div>`;
+
+  try {
+    const snapshot = await get(ref(db, `${DB_PREFIX}/rooms`));
+    if (!snapshot.exists()) {
+      listEl.innerHTML = `
+        <div class="admin-room-empty">
+          <span class="empty-icon">🏚️</span>
+          <div>ไม่มีห้องที่เปิดอยู่ในระบบ</div>
+        </div>`;
+      document.getElementById("btn-admin-reset-all")?.setAttribute("disabled", "");
+      return;
+    }
+
+    const rooms = snapshot.val();
+    const roomIds = Object.keys(rooms);
+    document.getElementById("btn-admin-reset-all")?.removeAttribute("disabled");
+
+    if (roomIds.length === 0) {
+      listEl.innerHTML = `
+        <div class="admin-room-empty">
+          <span class="empty-icon">🏚️</span>
+          <div>ไม่มีห้องที่เปิดอยู่ในระบบ</div>
+        </div>`;
+      document.getElementById("btn-admin-reset-all")?.setAttribute("disabled", "");
+      return;
+    }
+
+    const statusLabels = {
+      waiting: { text: "⏳ รอผู้เล่น", cls: "admin-status-waiting" },
+      playing: { text: "🎮 กำลังเล่น", cls: "admin-status-playing" },
+      ended:   { text: "🏁 จบแล้ว",   cls: "admin-status-ended" },
+    };
+
+    listEl.innerHTML = roomIds.map((roomId, i) => {
+      const room = rooms[roomId];
+      const players = room.players ? Object.keys(room.players) : [];
+      const status = room.status || "waiting";
+      const statusInfo = statusLabels[status] || statusLabels.waiting;
+      const hostName = room.players?.[room.hostId]?.name || "—";
+      const createdAt = room.createdAt ? new Date(room.createdAt).toLocaleString("th-TH", {
+        day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"
+      }) : "—";
+
+      return `
+        <div class="admin-room-item" style="animation-delay: ${i * 0.05}s;">
+          <div class="admin-room-info">
+            <div class="admin-room-code">${roomId}</div>
+            <div class="admin-room-meta">
+              <span class="admin-player-count">👥 ${players.length} คน</span>
+              <span>GM: ${escapeHtmlAdmin(hostName)}</span>
+              <span>·</span>
+              <span>${createdAt}</span>
+            </div>
+          </div>
+          <span class="admin-status-badge ${statusInfo.cls}">${statusInfo.text}</span>
+        </div>`;
+    }).join("");
+
+  } catch (err) {
+    console.error("Admin load rooms error:", err);
+    listEl.innerHTML = `
+      <div class="admin-room-empty">
+        <span class="empty-icon">❌</span>
+        <div>โหลดข้อมูลไม่สำเร็จ: ${err.message}</div>
+      </div>`;
+  }
+}
+
+async function adminResetAllRooms() {
+  try {
+    await remove(ref(db, `${DB_PREFIX}/rooms`));
+    showAdminStep("success");
+    // Also clear local session if the user was in a room
+    clearSession();
+  } catch (err) {
+    console.error("Admin reset error:", err);
+    alert("เกิดข้อผิดพลาด: " + err.message);
+  }
+}
+
+function escapeHtmlAdmin(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

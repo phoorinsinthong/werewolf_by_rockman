@@ -63,6 +63,68 @@
     </div>
   </div>
 
+  <!-- Admin Modal -->
+  <div id="admin-modal" class="modal-overlay hidden">
+    <div class="modal-box admin-modal-box">
+      <div class="modal-icon">🔧</div>
+      <h3>Admin Panel</h3>
+
+      <!-- Step 1: Password -->
+      <div id="admin-step-password">
+        <p>กรุณาใส่รหัส Admin เพื่อเข้าถึง</p>
+        <div class="input-group" style="margin-bottom: 12px;">
+          <input
+            type="password"
+            id="admin-password-input"
+            class="input-field"
+            placeholder="รหัส Admin..."
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </div>
+        <div id="admin-password-error" class="hidden" style="color:#fca5a5; font-size:0.85rem; margin-bottom:12px; animation: shake 0.3s ease;">❌ รหัสไม่ถูกต้อง</div>
+        <div class="modal-actions">
+          <button id="btn-admin-login" class="btn btn-primary btn-sm">🔓 เข้าสู่ระบบ</button>
+          <button id="btn-admin-close" class="btn btn-ghost btn-sm">ปิด</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Room List + Actions -->
+      <div id="admin-step-rooms" class="hidden">
+        <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 16px;">ห้องที่เปิดอยู่ในระบบ</p>
+        <div id="admin-room-list" class="admin-room-list">
+          <div class="admin-room-loading">
+            <div class="spinner-ring" style="width:32px;height:32px;position:relative;margin:0 auto 10px;"></div>
+            <span>กำลังโหลด...</span>
+          </div>
+        </div>
+        <div class="admin-actions-bar">
+          <button id="btn-admin-reset-all" class="btn btn-danger btn-sm" style="flex:1;">💥 Reset All Rooms</button>
+          <button id="btn-admin-back" class="btn btn-ghost btn-sm">🔙 กลับ</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Confirm Reset -->
+      <div id="admin-step-confirm" class="hidden">
+        <div style="font-size: 3rem; margin-bottom: 12px;">⚠️</div>
+        <h4 style="color: #fca5a5; margin-bottom: 10px;">ยืนยันการ Reset ทั้งหมด?</h4>
+        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 18px;">การกระทำนี้จะลบห้องทั้งหมดออกจากระบบอย่างถาวร ไม่สามารถย้อนกลับได้!</p>
+        <div class="modal-actions">
+          <button id="btn-admin-confirm-reset" class="btn btn-danger btn-sm">🗑️ ยืนยัน Reset ทั้งหมด</button>
+          <button id="btn-admin-cancel-reset" class="btn btn-ghost btn-sm">ยกเลิก</button>
+        </div>
+      </div>
+
+      <!-- Step 4: Success -->
+      <div id="admin-step-success" class="hidden">
+        <div style="font-size: 3rem; margin-bottom: 12px;">✅</div>
+        <h4 style="color: #6ee7b7; margin-bottom: 10px;">Reset สำเร็จ!</h4>
+        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 18px;">ห้องทั้งหมดถูกลบออกจากระบบแล้ว</p>
+        <button id="btn-admin-done" class="btn btn-primary btn-sm">ปิด</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Elimination VFX Overlay -->
   <div id="fx-elimination" class="fx-overlay hidden">
     <div class="fx-blood"></div>
@@ -126,6 +188,13 @@
 
         <button id="btn-create-room" class="btn btn-secondary">
           <span class="btn-icon">🎭</span> สร้างห้อง (เป็น GM)
+        </button>
+      </div>
+
+      <!-- Admin Button -->
+      <div class="admin-link-wrapper">
+        <button id="btn-open-admin" class="admin-link-btn">
+          🔧 <span>Admin</span>
         </button>
       </div>
 

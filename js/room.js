@@ -110,6 +110,8 @@ export async function leaveRoom() {
 
 // ─── Subscribe to Room ─────────────────────────────────────────────────────────
 
+let _kickGraceTimer = null; // Grace period before treating missing player as kick
+
 export function subscribeToRoom() {
   if (unsubRoom) unsubRoom();
   const roomRef = ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`);
@@ -120,8 +122,12 @@ export function subscribeToRoom() {
   let lastStatus = null;
   let lastPhase  = null;
 
+  // Clear any pending kick grace timer
+  if (_kickGraceTimer) { clearTimeout(_kickGraceTimer); _kickGraceTimer = null; }
+
   unsubRoom = onValue(roomRef, async (snapshot) => {
     if (!snapshot.exists()) {
+      if (_kickGraceTimer) { clearTimeout(_kickGraceTimer); _kickGraceTimer = null; }
       showKickedToast("ห้องถูกปิดแล้ว");
       resetState();
       showView("home");
@@ -136,13 +142,32 @@ export function subscribeToRoom() {
     const status = roomData.status || "waiting";
     const phase  = roomData.phase  || null;
 
-    // Kicked?
+    // Player not found in room data?
+    // Use a grace period to avoid false-kicks during Firebase reconnect/sync
     if (!me) {
-      showKickedToast("คุณถูกเชิญออกจากห้อง");
-      if (unsubRoom) { unsubRoom(); unsubRoom = null; }
-      resetState();
-      showView("home");
-      return;
+      if (!_kickGraceTimer) {
+        console.log("[WW] Player not found in room data — starting grace period (2s)");
+        _kickGraceTimer = setTimeout(() => {
+          _kickGraceTimer = null;
+          // Re-check: if still no player data, treat as kicked
+          const currentData = STATE.roomData;
+          if (!currentData?.players?.[STATE.playerId]) {
+            console.log("[WW] Grace period expired — player truly removed");
+            showKickedToast("คุณถูกเชิญออกจากห้อง");
+            if (unsubRoom) { unsubRoom(); unsubRoom = null; }
+            resetState();
+            showView("home");
+          }
+        }, 2000);
+      }
+      return; // Don't process further until grace period resolves
+    }
+
+    // Player found — cancel any pending kick grace
+    if (_kickGraceTimer) {
+      clearTimeout(_kickGraceTimer);
+      _kickGraceTimer = null;
+      console.log("[WW] Player re-appeared, grace period cancelled");
     }
 
     if (status !== lastStatus || phase !== lastPhase) {
@@ -155,24 +180,12 @@ export function subscribeToRoom() {
         document.body.removeAttribute("data-phase");
         const roleCardContainer = document.getElementById("role-card-container");
         if (roleCardContainer) roleCardContainer.classList.remove("highlight-flip");
-        // Clear all client-side cached state to prevent stale data between games
-        lastPlayersStr = null;
-        lastRoleDeckCountsStr = null;
-        subscribeToRoom._lastNightActions = null;
-        subscribeToRoom._lastNightTurn = null;
-        subscribeToRoom._lastHunter = null;
-        subscribeToRoom._lastPrivate = null;
-        selectedNightTargets = [];
-        resetVoteSelection();
-        // Clean up stale DOM elements from previous game
-        const loverInfo = document.getElementById('lover-info-display');
-        if (loverInfo) loverInfo.remove();
-        const seerResult = document.getElementById('seer-result');
-        if (seerResult) seerResult.classList.add('hidden');
-        const elimBanner = document.getElementById('elimination-banner');
-        if (elimBanner) elimBanner.classList.add('hidden');
+        // ── Full cleanup of all game UI state from previous round ──
+        cleanupGameUI();
         renderLobby(roomData);
       } else if (status === "playing") {
+        // ── Ensure previous game UI is fully cleaned before rendering new game ──
+        cleanupGameUI();
         showView("game");
         initChat();
         renderGameScreen(roomData);
@@ -217,19 +230,76 @@ export function subscribeToRoom() {
   });
 }
 
+// ─── Full UI Cleanup (between games) ──────────────────────────────────────────
+// Called when transitioning from game → lobby, or when starting a fresh game.
+// Ensures no stale state from the previous round bleeds into the new one.
+
+function cleanupGameUI() {
+  // 1. Seer result box
+  const seerEl = document.getElementById("seer-result");
+  if (seerEl) { seerEl.classList.add("hidden"); seerEl.textContent = ""; seerEl.removeAttribute("style"); }
+
+  // 2. Elimination banner
+  const elimBanner = document.getElementById("elimination-banner");
+  if (elimBanner) { elimBanner.classList.add("hidden"); elimBanner.innerHTML = ""; }
+
+  // 3. Elimination VFX overlay
+  const fxOverlay = document.getElementById("fx-elimination");
+  if (fxOverlay) { fxOverlay.classList.add("hidden"); fxOverlay.className = "fx-overlay hidden"; }
+
+  // 4. Lover info display (dynamically appended)
+  const loverInfo = document.getElementById("lover-info-display");
+  if (loverInfo) loverInfo.remove();
+
+  // 5. Wolf allies text
+  const wolfAllies = document.getElementById("wolf-allies");
+  if (wolfAllies) { wolfAllies.classList.add("hidden"); wolfAllies.textContent = ""; }
+
+  // 6. Night/Day/Vote/Standby panels — reset innerHTML
+  ["night-panel", "day-panel", "vote-panel", "standby-panel"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.display = "none"; el.innerHTML = ""; }
+  });
+
+  // 7. Role card — reset to default
+  const roleIcon = document.getElementById("role-icon");
+  const roleName = document.getElementById("role-name");
+  const roleDesc = document.getElementById("role-desc");
+  if (roleIcon) roleIcon.textContent = "❓";
+  if (roleName) roleName.textContent = "กำลังโหลด...";
+  if (roleDesc) roleDesc.textContent = "กำลังกำหนดบทบาท...";
+
+  // 8. GM panels
+  const gmNightResult = document.getElementById("gm-night-result-content");
+  if (gmNightResult) gmNightResult.innerHTML = "";
+  const gmRoleTable = document.getElementById("gm-role-table");
+  if (gmRoleTable) gmRoleTable.innerHTML = "";
+  const gmVoteTally = document.getElementById("gm-vote-tally");
+  if (gmVoteTally) gmVoteTally.innerHTML = "";
+  const gmHunterNotify = document.getElementById("gm-hunter-notify");
+  if (gmHunterNotify) gmHunterNotify.style.display = "none";
+
+  // 9. Chat messages
+  const chatMessages = document.getElementById("chat-messages");
+  if (chatMessages) chatMessages.innerHTML = '<div class="chat-empty">🌙 คืนมาแล้ว... เงียบๆ ไว้นะ</div>';
+
+  // 10. Reset cached comparison strings (prevent stale data detection)
+  lastPlayersStr = null;
+  lastRoleDeckCountsStr = null;
+  subscribeToRoom._lastNightActions = "";
+  subscribeToRoom._lastNightTurn = "";
+  subscribeToRoom._lastHunter = "";
+  subscribeToRoom._lastPrivate = "";
+
+  console.log("[WW] Game UI fully cleaned up");
+}
+
 // ─── Reconnect to Existing Session ────────────────────────────────────────────
 
 export async function reconnectToRoom() {
   if (!STATE.roomId || !STATE.playerId) return;
 
-  const snapshot = await get(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}`));
-  if (!snapshot.exists()) {
-    showKickedToast("ไม่พบเซสชันเก่า กลับหน้าหลัก");
-    resetState();
-    showView("home");
-    return;
-  }
-
+  // Check if room still exists
   const roomSnap = await get(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`));
   if (!roomSnap.exists()) {
     showKickedToast("ห้องถูกปิดแล้ว");
@@ -238,8 +308,32 @@ export async function reconnectToRoom() {
     return;
   }
 
-  STATE.isHost   = roomSnap.val().hostId === STATE.playerId;
-  STATE.roomData = roomSnap.val();
+  const roomData = roomSnap.val();
+  const playerSnap = await get(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}`));
+
+  if (!playerSnap.exists()) {
+    // Player was dropped from the database — try to re-add using saved session
+    const saved = JSON.parse(localStorage.getItem("ww_session") || "null");
+    if (saved?.roomId === STATE.roomId && saved?.playerName) {
+      console.log("[WW] Player dropped from DB, re-adding...");
+      // Only re-add if game is still waiting, or if the player was already in the game
+      await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}`), {
+        name:    saved.playerName || STATE.playerName,
+        isReady: false,
+        isAlive: true,
+        role:    "",
+        vote:    "",
+      });
+    } else {
+      showKickedToast("ไม่พบเซสชันเก่า กลับหน้าหลัก");
+      resetState();
+      showView("home");
+      return;
+    }
+  }
+
+  STATE.isHost   = roomData.hostId === STATE.playerId;
+  STATE.roomData = roomData;
   subscribeToRoom();
 }
 
@@ -1459,18 +1553,6 @@ function resetState() {
   STATE.roomData   = null;
   STATE.playerName = "";
   STATE.isHost     = false;
-  // Clear all module-level cached state
-  lastPlayersStr = null;
-  lastRoleDeckCountsStr = null;
-  lastStatus = null;
-  lastPhase  = null;
-  subscribeToRoom._lastNightActions = null;
-  subscribeToRoom._lastNightTurn = null;
-  subscribeToRoom._lastHunter = null;
-  subscribeToRoom._lastPrivate = null;
-  selectedNightTargets = [];
-  resetVoteSelection();
-  try { localStorage.removeItem("ww_session"); } catch (_) {}
 }
 
 function persistSession() {
