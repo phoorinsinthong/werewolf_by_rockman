@@ -23,6 +23,8 @@
   "rules": {
     "werewolf": {
       "rooms": {
+        ".read": "auth != null",
+        ".write": "auth != null",
         "$roomId": {
           ".read": "auth != null",
           ".write": "auth != null",
