@@ -165,24 +165,17 @@
           >
         </div>
 
-        <div class="input-group">
-          <label for="room-code-input">
-            <span class="label-icon">🔑</span> รหัสห้อง
+        <div class="input-group" style="margin-bottom: 20px;">
+          <label>
+            <span class="label-icon">🚪</span> เลือกห้องที่ต้องการเข้าร่วม
           </label>
-          <input
-            type="text"
-            id="room-code-input"
-            class="input-field input-code"
-            placeholder="ABCD12"
-            maxlength="8"
-            autocomplete="off"
-            spellcheck="false"
-          >
+          <div id="home-room-list" class="home-room-list">
+             <div class="home-room-loading">
+               <div class="spinner-ring" style="width:24px;height:24px;margin:0 auto 10px;"></div>
+               <span>กำลังค้นหาห้อง...</span>
+             </div>
+          </div>
         </div>
-
-        <button id="btn-join-room" class="btn btn-primary">
-          <span class="btn-icon">🤝</span> เข้าร่วมห้อง
-        </button>
 
         <div class="home-divider">หรือสร้างห้องใหม่</div>
 

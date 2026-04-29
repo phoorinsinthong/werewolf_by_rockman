@@ -12,40 +12,40 @@ import {
   gmAnnounceNightResult, announceWinner, resolveNight, ROLES,
   setNightTurn, approveNightAction, rejectNightAction, triggerHunterAbility
 } from "./game.js";
-import { renderVoting, castVote, resetVoteSelection, resolveVotes, gmSkipVote} from "./voting.js";
+import { renderVoting, castVote, resetVoteSelection, resolveVotes, gmSkipVote } from "./voting.js";
 import { initChat, setActiveChatTab } from "./chat.js";
 
 let unsubRoom = null;
 let lastStatus = null;
-let lastPhase  = null;
+let lastPhase = null;
 let lastPlayersStr = null;
 let lastRoleDeckCountsStr = null;
 
 // ─── Create Room ───────────────────────────────────────────────────────────────
 
 export async function createRoom(playerName) {
-  const roomId   = generateRoomCode();
-  const roomRef  = ref(db, `${DB_PREFIX}/rooms/${roomId}`);
+  const roomId = generateRoomCode();
+  const roomRef = ref(db, `${DB_PREFIX}/rooms/${roomId}`);
 
-  STATE.playerId   = STATE.authUser.uid;
-  STATE.roomId     = roomId;
+  STATE.playerId = STATE.authUser.uid;
+  STATE.roomId = roomId;
   STATE.playerName = playerName;
-  STATE.isHost     = true;
+  STATE.isHost = true;
 
   await set(roomRef, {
     hostId: STATE.playerId,
     status: "waiting",
-    phase:  null,
+    phase: null,
     dayCount: 0,
     maxPlayers: 16,
     roleDeckCounts: {},
     players: {
       [STATE.playerId]: {
-        name:    playerName,
+        name: playerName,
         isReady: true,   // GM is always ready
         isAlive: true,
-        role:    "",
-        vote:    "",
+        role: "",
+        vote: "",
       },
     },
     createdAt: Date.now(),
@@ -58,7 +58,7 @@ export async function createRoom(playerName) {
 // ─── Join Room ─────────────────────────────────────────────────────────────────
 
 export async function joinRoom(roomId, playerName) {
-  const roomRef  = ref(db, `${DB_PREFIX}/rooms/${roomId}`);
+  const roomRef = ref(db, `${DB_PREFIX}/rooms/${roomId}`);
   const snapshot = await get(roomRef);
 
   if (!snapshot.exists()) throw new Error("ไม่พบห้องนี้ ตรวจรหัสห้องและลองใหม่");
@@ -66,7 +66,7 @@ export async function joinRoom(roomId, playerName) {
   if (room.status === "ended") throw new Error("เกมนี้จบไปแล้ว");
 
   const players = room.players || {};
-  const names   = Object.values(players).map(p => p.name.toLowerCase());
+  const names = Object.values(players).map(p => p.name.toLowerCase());
   if (names.includes(playerName.toLowerCase())) {
     throw new Error(`ชื่อ "${playerName}" ถูกใช้แล้ว เลือกชื่ออื่นนะคะ`);
   }
@@ -74,17 +74,17 @@ export async function joinRoom(roomId, playerName) {
     throw new Error("ห้องเต็มแล้ว");
   }
 
-  STATE.playerId   = STATE.authUser.uid;
-  STATE.roomId     = roomId;
+  STATE.playerId = STATE.authUser.uid;
+  STATE.roomId = roomId;
   STATE.playerName = playerName;
-  STATE.isHost     = room.hostId === STATE.playerId;
+  STATE.isHost = room.hostId === STATE.playerId;
 
   await update(ref(db, `${DB_PREFIX}/rooms/${roomId}/players/${STATE.playerId}`), {
-    name:    playerName,
+    name: playerName,
     isReady: false,
     isAlive: true,
-    role:    "",
-    vote:    "",
+    role: "",
+    vote: "",
   });
 
   subscribeToRoom();
@@ -120,7 +120,7 @@ export function subscribeToRoom() {
   if (displayCode) displayCode.textContent = STATE.roomId;
 
   let lastStatus = null;
-  let lastPhase  = null;
+  let lastPhase = null;
 
   // Clear any pending kick grace timer
   if (_kickGraceTimer) { clearTimeout(_kickGraceTimer); _kickGraceTimer = null; }
@@ -136,11 +136,11 @@ export function subscribeToRoom() {
 
     const roomData = snapshot.val();
     STATE.roomData = roomData;
-    STATE.isHost   = roomData.hostId === STATE.playerId;
+    STATE.isHost = roomData.hostId === STATE.playerId;
 
-    const me     = roomData.players?.[STATE.playerId];
+    const me = roomData.players?.[STATE.playerId];
     const status = roomData.status || "waiting";
-    const phase  = roomData.phase  || null;
+    const phase = roomData.phase || null;
 
     // Player not found in room data?
     // Use a grace period to avoid false-kicks during Firebase reconnect/sync
@@ -173,7 +173,7 @@ export function subscribeToRoom() {
     if (status !== lastStatus || phase !== lastPhase) {
       stopPhaseTimer();
       lastStatus = status;
-      lastPhase  = phase;
+      lastPhase = phase;
 
       if (status === "waiting") {
         showView("lobby");
@@ -198,33 +198,33 @@ export function subscribeToRoom() {
       }
     } else {
       // Data-only update: re-render if any relevant data changed
-      const playersStr      = JSON.stringify(roomData.players || {});
-      const deckCountsStr   = JSON.stringify(roomData.roleDeckCounts || {});
+      const playersStr = JSON.stringify(roomData.players || {});
+      const deckCountsStr = JSON.stringify(roomData.roleDeckCounts || {});
       const nightActionsStr = JSON.stringify(roomData.nightActions || {});
-      const nightTurnStr    = roomData.nightTurn || "";
-      const hunterStr       = roomData.hunterPending || "";
+      const nightTurnStr = roomData.nightTurn || "";
+      const hunterStr = roomData.hunterPending || "";
       // Private data for current player only (feedback)
-      const privateStr      = JSON.stringify(roomData.privateData?.[STATE.playerId] || {});
+      const privateStr = JSON.stringify(roomData.privateData?.[STATE.playerId] || {});
 
       const anyChanged =
-        playersStr      !== lastPlayersStr ||
-        deckCountsStr   !== lastRoleDeckCountsStr ||
+        playersStr !== lastPlayersStr ||
+        deckCountsStr !== lastRoleDeckCountsStr ||
         nightActionsStr !== (subscribeToRoom._lastNightActions || "") ||
-        nightTurnStr    !== (subscribeToRoom._lastNightTurn || "") ||
-        hunterStr       !== (subscribeToRoom._lastHunter || "") ||
-        privateStr      !== (subscribeToRoom._lastPrivate || "");
+        nightTurnStr !== (subscribeToRoom._lastNightTurn || "") ||
+        hunterStr !== (subscribeToRoom._lastHunter || "") ||
+        privateStr !== (subscribeToRoom._lastPrivate || "");
 
       if (anyChanged) {
         lastPlayersStr = playersStr;
         lastRoleDeckCountsStr = deckCountsStr;
         subscribeToRoom._lastNightActions = nightActionsStr;
-        subscribeToRoom._lastNightTurn    = nightTurnStr;
-        subscribeToRoom._lastHunter       = hunterStr;
-        subscribeToRoom._lastPrivate      = privateStr;
+        subscribeToRoom._lastNightTurn = nightTurnStr;
+        subscribeToRoom._lastHunter = hunterStr;
+        subscribeToRoom._lastPrivate = privateStr;
 
         if (status === "waiting") renderLobby(roomData);
         if (status === "playing") renderGameScreenPartial(roomData);
-        if (status === "ended")   renderResult(roomData);
+        if (status === "ended") renderResult(roomData);
       }
     }
   });
@@ -318,11 +318,11 @@ export async function reconnectToRoom() {
       console.log("[WW] Player dropped from DB, re-adding...");
       // Only re-add if game is still waiting, or if the player was already in the game
       await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}`), {
-        name:    saved.playerName || STATE.playerName,
+        name: saved.playerName || STATE.playerName,
         isReady: false,
         isAlive: true,
-        role:    "",
-        vote:    "",
+        role: "",
+        vote: "",
       });
     } else {
       showKickedToast("ไม่พบเซสชันเก่า กลับหน้าหลัก");
@@ -332,7 +332,7 @@ export async function reconnectToRoom() {
     }
   }
 
-  STATE.isHost   = roomData.hostId === STATE.playerId;
+  STATE.isHost = roomData.hostId === STATE.playerId;
   STATE.roomData = roomData;
   subscribeToRoom();
 }
@@ -340,13 +340,13 @@ export async function reconnectToRoom() {
 // ─── Render Lobby ──────────────────────────────────────────────────────────────
 
 function renderLobby(roomData) {
-  const players    = roomData.players || {};
-  const hostId     = roomData.hostId;
-  const ids        = Object.keys(players);
-  const nonGMIds   = ids.filter(id => id !== hostId);
-  const me         = players[STATE.playerId];
+  const players = roomData.players || {};
+  const hostId = roomData.hostId;
+  const ids = Object.keys(players);
+  const nonGMIds = ids.filter(id => id !== hostId);
+  const me = players[STATE.playerId];
   const readyCount = nonGMIds.filter(id => players[id]?.isReady).length;
-  const allReady   = readyCount === nonGMIds.length && nonGMIds.length >= 4;
+  const allReady = readyCount === nonGMIds.length && nonGMIds.length >= 4;
 
   // Player count badge (ONLY non-GM players)
   const countEl = document.getElementById("lobby-player-count");
@@ -356,8 +356,8 @@ function renderLobby(roomData) {
 
   // GM section
   const gmPlayer = players[hostId];
-  const gmIsMe   = hostId === STATE.playerId;
-  const gmHtml   = gmPlayer ? `
+  const gmIsMe = hostId === STATE.playerId;
+  const gmHtml = gmPlayer ? `
     <div class="lobby-player lobby-player-gm ${gmIsMe ? "lobby-player-me" : ""}" style="border-color: var(--day-gold);">
       <div class="lobby-player-left">
         <div class="lobby-avatar lobby-avatar-gm" style="background: var(--day-gold);">🎭</div>
@@ -376,8 +376,8 @@ function renderLobby(roomData) {
 
   // Regular player rows
   const playerRows = nonGMIds.map(id => {
-    const p      = players[id];
-    const isMe   = id === STATE.playerId;
+    const p = players[id];
+    const isMe = id === STATE.playerId;
     return `
       <div class="lobby-player ${isMe ? "lobby-player-me" : ""}">
         <div class="lobby-player-left">
@@ -427,12 +427,12 @@ function renderLobby(roomData) {
       werewolf: "ฝ่ายหมาป่า",
       independent: "อิสระ/อื่นๆ"
     };
-    
+
     let deckSetupHtml = `<div style="display:flex; flex-direction:column; gap:16px;">`;
-    
+
     for (const [teamKey, teamName] of Object.entries(categories)) {
       deckSetupHtml += `<div><h5 style="color:var(--text-muted); margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;">${teamName}</h5><div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:8px;">`;
-      
+
       const teamRoles = Object.keys(ROLES).filter(r => ROLES[r].team === teamKey);
       teamRoles.forEach(rKey => {
         const info = ROLES[rKey];
@@ -453,7 +453,7 @@ function renderLobby(roomData) {
       deckSetupHtml += `</div></div>`;
     }
     deckSetupHtml += `</div>`;
-    
+
     const setupContainer = document.getElementById("gm-deck-setup");
     if (setupContainer) setupContainer.innerHTML = deckSetupHtml;
   }
@@ -473,7 +473,7 @@ function renderLobby(roomData) {
     if (totalDeck > 0) {
       pubContainer.innerHTML = pubDeckHtml;
     } else {
-      pubContainer.innerHTML = STATE.isHost 
+      pubContainer.innerHTML = STATE.isHost
         ? `<div class="text-center w-100" style="color: var(--day-gold); padding: 20px; font-weight: 500;">🎮 กรุณาจัดเตรียมบทบาทที่ส่วน "ตัวจัดการการ์ดเกม" ด้านบน</div>`
         : `<div class="text-center w-100" style="color: rgba(255,255,255,0.5); padding: 20px;">รอ GM จัดไพ่...</div>`;
     }
@@ -499,9 +499,9 @@ function renderLobby(roomData) {
 // ─── Render Game Screen (full, on phase change) ────────────────────────────────
 
 function renderGameScreen(roomData) {
-  const phase   = roomData.phase || "standby";
+  const phase = roomData.phase || "standby";
   const players = roomData.players || {};
-  const me      = players[STATE.playerId];
+  const me = players[STATE.playerId];
 
   // Phase banner
   updatePhaseBanner(phase, roomData.dayCount || 0);
@@ -526,9 +526,9 @@ function renderGameScreen(roomData) {
 // ─── Render Game Partial (same phase, different data) ─────────────────────────
 
 function renderGameScreenPartial(roomData) {
-  const phase   = roomData.phase || "standby";
+  const phase = roomData.phase || "standby";
   const players = roomData.players || {};
-  const me      = players[STATE.playerId];
+  const me = players[STATE.playerId];
 
   renderPlayerSidebar(players, roomData.hostId);
 
@@ -549,18 +549,18 @@ function updatePhaseBanner(phase, dayCount) {
   if (!banner) return;
 
   const phaseMap = {
-    standby:    { cls: "phase-standby", icon: "🎭", label: "รอเริ่มรอบ" },
-    night:      { cls: "phase-night",   icon: "🌙", label: `คืนที่ ${dayCount}` },
+    standby: { cls: "phase-standby", icon: "🎭", label: "รอเริ่มรอบ" },
+    night: { cls: "phase-night", icon: "🌙", label: `คืนที่ ${dayCount}` },
     "night-done": { cls: "phase-night", icon: "🌙", label: `คืนที่ ${dayCount} ✅` },
-    day:        { cls: "phase-day",     icon: "☀️", label: `กลางวันที่ ${dayCount}` },
-    voting:     { cls: "phase-voting",  icon: "🗳️", label: "ถึงเวลาโหวต!" },
+    day: { cls: "phase-day", icon: "☀️", label: `กลางวันที่ ${dayCount}` },
+    voting: { cls: "phase-voting", icon: "🗳️", label: "ถึงเวลาโหวต!" },
   };
 
   const { cls, icon, label } = phaseMap[phase] || { cls: "", icon: "🎭", label: phase };
   banner.className = `phase-banner ${cls}`;
-  const iconEl  = banner.querySelector(".phase-icon");
+  const iconEl = banner.querySelector(".phase-icon");
   const labelEl = banner.querySelector(".phase-label");
-  if (iconEl)  iconEl.textContent  = icon;
+  if (iconEl) iconEl.textContent = icon;
   if (labelEl) labelEl.textContent = label;
 
   // Set phase for ambient sky transitions
@@ -586,15 +586,15 @@ function showPlayerPanels() {
 // ─── GM Panel Render ───────────────────────────────────────────────────────────
 
 function renderGMPanel(roomData) {
-  const phase   = roomData.phase || "standby";
+  const phase = roomData.phase || "standby";
   const players = roomData.players || {};
-  const hostId  = roomData.hostId;
+  const hostId = roomData.hostId;
 
   // 1. Role table
   renderGMRoleTable(players, hostId);
 
   // 2. Night result card
-  const nightCard    = document.getElementById("gm-night-result");
+  const nightCard = document.getElementById("gm-night-result");
   const nightContent = document.getElementById("gm-night-result-content");
   if (nightCard && nightContent) {
     const visible = phase === "night-done";
@@ -623,11 +623,11 @@ function renderGMPanel(roomData) {
 
   // 5. Phase control button visibility
   const phaseCtrl = {
-    standby:      "gm-ctrl-standby",
-    night:        "gm-ctrl-night",
+    standby: "gm-ctrl-standby",
+    night: "gm-ctrl-night",
     "night-done": "gm-ctrl-nightdone",
-    day:          "gm-ctrl-day",
-    voting:       "gm-ctrl-voting",
+    day: "gm-ctrl-day",
+    voting: "gm-ctrl-voting",
   };
   Object.entries(phaseCtrl).forEach(([ph, elemId]) => {
     const el = document.getElementById(elemId);
@@ -656,7 +656,7 @@ function renderGMPanel(roomData) {
     hunterNotify.innerHTML = `
       <div class="gm-card-title"><span>🔫</span> พรานป่ากำลังใช้พลัง!</div>
       <p style="color:#f87171;margin:8px 0"><b>${escapeHtml(hunterPlayer?.name || "?")}</b> ถูกฆ่าแล้ว — กำลังเล็งเป้าหมายก่อนตาย</p>
-      ${ isPendingHunter ? `
+      ${isPendingHunter ? `
         <div style="margin-top:10px;padding:10px;background:rgba(251,146,60,0.1);border:1px solid rgba(251,146,60,0.3);border-radius:8px">
           <p style="color:orange;font-weight:700;margin-bottom:8px">⚖️ พรานป่าเลือกยิง:</p>
           <div style="font-size:0.95em;margin-bottom:10px">เป้าหมาย: <b style="color:#fca5a5">${escapeHtml(players[pending.targetId]?.name || pending.targetId)}</b></div>
@@ -682,19 +682,19 @@ function buildNightResultHTML(actions, players) {
   };
 
   let html = `<div style="display:flex; flex-direction:column; gap:8px;">`;
-  
+
   Object.keys(ROLES).forEach(role => {
     const targetId = actions[`${role}Target`];
     const extra = actions[`${role}Extra`];
     if (targetId && targetId !== 'skip') {
       const cfg = ROLES[role];
       const targetList = targetId.split(',').map(tid => getName(tid)).filter(n => n).join(" และ ");
-      
+
       let extraStr = "";
       if (role === 'witch') {
         extraStr = ` <i>(ใช้ ${extra === 'heal' ? 'ยาชุบ' : 'ยาพิษ'})</i>`;
       }
-      
+
       html += `
         <div class="gm-night-item" style="display:flex; align-items:center; gap:12px; background:rgba(255,255,255,0.05); padding:8px 12px; border-radius:8px; border-left:3px solid ${cfg.color}; margin-bottom:4px;">
           <span style="font-size:1.5em">${cfg.icon}</span>
@@ -723,7 +723,7 @@ function renderGMRoleTable(players, hostId) {
   const table = document.getElementById("gm-role-table");
   if (!table) return;
 
-  const ids   = Object.keys(players);
+  const ids = Object.keys(players);
   const nonGM = ids.filter(id => id !== hostId);
   const lovers = STATE.roomData?.lovers;
 
@@ -734,11 +734,11 @@ function renderGMRoleTable(players, hostId) {
   }
 
   table.innerHTML = nonGM.map(id => {
-    const p    = players[id];
-    const cfg  = getRoleConfig(p.role || "villager");
+    const p = players[id];
+    const cfg = getRoleConfig(p.role || "villager");
     const dead = !p.isAlive;
     const votes = voteMap[id] ? `<span style="background:rgba(239,68,68,0.2);color:#f87171;padding:2px 6px;border-radius:4px;font-size:0.75em;margin-left:4px">${voteMap[id]}🗳️</span>` : "";
-    
+
     // Status badges
     const status = p.status || {};
     let statusHtml = "";
@@ -748,7 +748,7 @@ function renderGMRoleTable(players, hostId) {
       const loverName = players[status.lover]?.name || "?";
       statusHtml += `<span class="status-badge status-lover" style="margin-left:4px" title="คู่รัก: ${escapeHtml(loverName)}">💘</span>`;
     }
-    
+
     return `
       <div class="gm-role-row ${dead ? "gm-status-dead" : ""}">
         <div class="gm-role-avatar" style="background:${cfg.color}22;color:${cfg.color}">${p.name.charAt(0).toUpperCase()}</div>
@@ -760,13 +760,13 @@ function renderGMRoleTable(players, hostId) {
 }
 
 function renderGMVoteTally(roomData) {
-  const tally   = document.getElementById("gm-vote-tally");
+  const tally = document.getElementById("gm-vote-tally");
   if (!tally) return;
 
   const players = roomData.players || {};
-  const alive   = Object.entries(players).filter(([, p]) => p.isAlive && p.role !== "gm");
-  const total   = alive.length;
-  const voted   = alive.filter(([, p]) => p.vote).length;
+  const alive = Object.entries(players).filter(([, p]) => p.isAlive && p.role !== "gm");
+  const total = alive.length;
+  const voted = alive.filter(([, p]) => p.vote).length;
 
   const voteMap = {};
   for (const [, p] of alive) {
@@ -783,9 +783,9 @@ function renderGMVoteTally(roomData) {
   tally.innerHTML = `
     <div class="gm-vote-progress">${voted} / ${total} คนโหวตแล้ว</div>
     ${sorted.map(([id, p]) => {
-      const count = voteMap[id] || 0;
-      const pct   = Math.round((count / maxVote) * 100);
-      return `
+    const count = voteMap[id] || 0;
+    const pct = Math.round((count / maxVote) * 100);
+    return `
         <div class="gm-vote-row">
           <div class="gm-vote-name">${escapeHtml(p.name)}</div>
           <div class="gm-vote-bar-wrap">
@@ -793,17 +793,17 @@ function renderGMVoteTally(roomData) {
           </div>
           <div class="gm-vote-count">${count} โหวต</div>
         </div>`;
-    }).join("")}`;
+  }).join("")}`;
 }
 
 // ─── GM Night Turn Control ───────────────────────────────────────────────────
 
 function renderGMNightControl(roomData) {
   const turnListContainer = document.getElementById("gm-night-turn-list");
-  const pendingContainer  = document.getElementById("gm-pending-action");
-  const pendingContent    = document.getElementById("gm-pending-content");
-  const currentTurnEl     = document.getElementById("gm-current-turn");
-  
+  const pendingContainer = document.getElementById("gm-pending-action");
+  const pendingContent = document.getElementById("gm-pending-content");
+  const currentTurnEl = document.getElementById("gm-current-turn");
+
   if (!turnListContainer || !pendingContainer || !pendingContent || !currentTurnEl) return;
 
   const players = roomData.players || {};
@@ -829,7 +829,7 @@ function renderGMNightControl(roomData) {
     const cfg = ROLES[roleKey];
     const isCurrent = currentTurn === roleKey;
     const isDone = !!actions[roleKey + "TargetDone"];
-    
+
     return `
       <button class="btn ${isCurrent ? "btn-primary" : "btn-ghost"}" 
               style="padding:6px 12px; font-size:0.85rem; border:1px solid ${isCurrent ? "transparent" : "rgba(255,255,255,0.2)"}"
@@ -846,7 +846,7 @@ function renderGMNightControl(roomData) {
     const roleCfg = ROLES[pending.role];
     const targetPlayer = players[pending.targetId];
     const targetName = pending.targetId === "skip" ? "ไม่เลือกใคร (ข้าม)" : (targetPlayer ? targetPlayer.name : "???");
-    
+
     pendingContainer.classList.remove("hidden");
     let actionInfo = `<b>${roleCfg.icon} ${roleCfg.name}</b> เลือกเป้าหมาย: <b style="color:#6ee7b7">${targetName}</b>`;
     if (pending.extraData) actionInfo += ` (${pending.extraData})`;
@@ -871,9 +871,9 @@ function renderPlayerGameView(phase, me, players, roomData) {
   }
 
   const standbyPanel = document.getElementById("standby-panel");
-  const nightPanel   = document.getElementById("night-panel");
-  const dayPanel     = document.getElementById("day-panel");
-  const votePanel    = document.getElementById("vote-panel");
+  const nightPanel = document.getElementById("night-panel");
+  const dayPanel = document.getElementById("day-panel");
+  const votePanel = document.getElementById("vote-panel");
 
   [standbyPanel, nightPanel, dayPanel, votePanel].forEach(el => { if (el) el.style.display = "none"; });
 
@@ -923,15 +923,15 @@ function renderRoleCard(me, players, hostId) {
   // Fallback to villager IF the game has started but role is missing
   // Otherwise show a loading state
   const roleKey = me?.role || "villager";
-  const cfg     = getRoleConfig(roleKey);
-  const isDead  = me ? !me.isAlive : false;
-  
+  const cfg = getRoleConfig(roleKey);
+  const isDead = me ? !me.isAlive : false;
+
   card.className = `glass-card role-card ${isDead ? "role-dead" : ""}`;
   card.style.setProperty("--role-color", cfg.color);
 
-  const iconEl   = document.getElementById("role-icon");
-  const nameEl   = document.getElementById("role-name");
-  const descEl   = document.getElementById("role-desc");
+  const iconEl = document.getElementById("role-icon");
+  const nameEl = document.getElementById("role-name");
+  const descEl = document.getElementById("role-desc");
   const wolvesEl = document.getElementById("wolf-allies");
 
   if (iconEl) iconEl.textContent = cfg.icon;
@@ -948,12 +948,12 @@ function renderRoleCard(me, players, hostId) {
     const role = me.role;
     let allies = [];
     let allyLabel = "";
-    
+
     if (["werewolf", "alpha_wolf", "dire_wolf", "lone_wolf", "mystic_wolf", "wolf_cub", "wolf_man", "minion", "idiot"].includes(role)) {
       allies = Object.entries(players)
         .filter(([id, p]) => ["werewolf", "alpha_wolf", "dire_wolf", "lone_wolf", "mystic_wolf", "wolf_cub", "wolf_man"].includes(p.role) && id !== STATE.playerId && id !== hostId)
         .map(([, p]) => p.name);
-      
+
       if (allies.length) {
         wolvesEl.classList.remove("hidden");
         allyLabel = "🐺 หมาป่าที่อยู่ในฝูง";
@@ -978,7 +978,7 @@ function renderRoleCard(me, players, hostId) {
         wolvesEl.innerHTML = `🔮 หมอดูตัวจริงคือ: <b>${allies.join(", ")}</b>`;
       }
     }
-    
+
     // Show lover info on role card
     const myStatus = me?.status || {};
     if (myStatus.lover) {
@@ -1018,14 +1018,14 @@ function renderNightPanel(me, players) {
 
   const role = me.role;
   const cfg = ROLES[role];
-  
+
   if (!cfg || cfg.actionPhase === "none" || (cfg.actionPhase === "firstNight" && STATE.roomData?.dayCount > 1)) {
     panel.innerHTML = `<div class="night-waiting"><div class="moon-anim">🌙</div><p>รอให้คืนผ่านไป...</p><p style="color:var(--text-muted);font-size:0.84rem">คุณสมบัติแฝง หรือ คุณไม่ต้องทำอะไรในคืนนี้</p></div>`;
     return;
   }
 
   const actionDone = !!STATE.roomData?.nightActions?.[role + "TargetDone"];
-  const isTurn     = STATE.roomData?.nightTurn === role;
+  const isTurn = STATE.roomData?.nightTurn === role;
 
   if (actionDone) {
     // Show role-specific feedback if GM has approved
@@ -1061,14 +1061,14 @@ function renderNightPanel(me, players) {
   const targets = Object.entries(players)
     .filter(([id, p]) => {
       const isSelf = id === STATE.playerId;
-      const isGM   = p.role === "gm";
+      const isGM = p.role === "gm";
       const isAlive = p.isAlive;
-      
+
       if (!isAlive || isGM) return false;
-      
+
       // Allow self-target for Bodyguard (ผู้คุ้มกัน)
       if (role === "bodyguard" && isSelf) return true;
-      
+
       // Standard target restriction: not self
       if (isSelf) return false;
 
@@ -1086,10 +1086,10 @@ function renderNightPanel(me, players) {
       <p class="night-action-label">${cfg.icon} ${actionLabel}</p>
       <div class="night-target-grid" id="night-target-grid">
         ${targets.length === 0
-          ? `<p style="color:var(--text-muted);font-size:0.84rem;grid-column:1/-1;text-align:center">ไม่มีเป้าหมาย</p>`
-          : targets.map(([id, p]) => {
-              if (role === "witch") {
-                return `
+      ? `<p style="color:var(--text-muted);font-size:0.84rem;grid-column:1/-1;text-align:center">ไม่มีเป้าหมาย</p>`
+      : targets.map(([id, p]) => {
+        if (role === "witch") {
+          return `
                 <div class="night-target-btn witch-card" style="display:flex; flex-direction:column; gap:4px; padding:8px; height:auto; align-items:center;">
                   <div style="text-align:center">
                     <div class="night-avatar" style="margin:0 auto">${p.name.charAt(0).toUpperCase()}</div>
@@ -1100,14 +1100,14 @@ function renderNightPanel(me, players) {
                     <button style="flex:1; padding:4px; font-size:0.7em; background:#ef444420; border:1px solid #ef4444; border-radius:4px; color:#ef4444; cursor:pointer;" onclick="window._nightAction('${role}', '${id}', this, 'poison')">ฆ่า</button>
                   </div>
                 </div>`;
-              } else {
-                return `
+        } else {
+          return `
                 <button class="night-target-btn" onclick="window._nightAction('${role}', '${id}', this)">
                   <div class="night-avatar">${p.name.charAt(0).toUpperCase()}</div>
                   <span>${escapeHtml(p.name)}</span>
                 </button>`;
-              }
-          }).join("")}
+        }
+      }).join("")}
       </div>
       ${skipBtn}
     </div>`;
@@ -1116,7 +1116,7 @@ function renderNightPanel(me, players) {
 // ─── Night Feedback HTML (role-specific result shown to player after GM approves) ──
 
 function buildNightFeedbackHTML(feedback) {
-  const T    = feedback.type;
+  const T = feedback.type;
   const name = feedback.targetName
     ? `<b style="color:white">${escapeHtml(feedback.targetName)}</b>`
     : "";
@@ -1141,37 +1141,37 @@ function buildNightFeedbackHTML(feedback) {
   }
 
   if (T === "seer" || T === "inspect") {
-    const isWolf  = feedback.isWolf;
+    const isWolf = feedback.isWolf;
     const verdict = isWolf ? "🐺 หมาป่า!" : "✅ ชาวบ้าน";
-    const color   = isWolf ? "#ef4444" : "#10b981";
-    const icon2   = T === "inspect" ? "👁️🐺" : "🔮";
+    const color = isWolf ? "#ef4444" : "#10b981";
+    const icon2 = T === "inspect" ? "👁️🐺" : "🔮";
     return card(icon2, "ผลการส่อง", color,
       `<p style="margin:4px 0">${name}</p><p style="font-size:1.4em;font-weight:800;color:${color};margin:6px 0">${verdict}</p>`,
       `${color}40`, `${color}10`);
   }
 
   if (T === "sorceress") {
-    const isSeer  = feedback.isSeer;
+    const isSeer = feedback.isSeer;
     const verdict = isSeer ? "🔮 ใช่! นี่คือหมอดู!" : "❌ ไม่ใช่หมอดู";
-    const color   = isSeer ? "#a78bfa" : "#6b7280";
+    const color = isSeer ? "#a78bfa" : "#6b7280";
     return card("🔮🐺", "ผลการหาหมอดู", color,
       `<p style="margin:4px 0">${name}</p><p style="font-size:1.15em;font-weight:800;color:${color};margin:6px 0">${verdict}</p>`,
       `${color}40`, `${color}10`);
   }
 
   if (T === "aura") {
-    const hasS  = feedback.hasSpecial;
+    const hasS = feedback.hasSpecial;
     const verdict = hasS ? "✨ มีบทบาทพิเศษ" : "👤 ชาวบ้านธรรมดา";
-    const color   = hasS ? "#d946ef" : "#6b7280";
+    const color = hasS ? "#d946ef" : "#6b7280";
     return card("✨", "ผลออร่า", color,
       `<p style="margin:4px 0">${name}</p><p style="font-size:1.15em;font-weight:800;color:${color};margin:6px 0">${verdict}</p>`,
       `${color}40`, `${color}10`);
   }
 
   if (T === "pi") {
-    const isWolf  = feedback.isWolf;
+    const isWolf = feedback.isWolf;
     const verdict = isWolf ? "🐺 มีหมาป่าในบริเวณนี้!" : "✅ ไม่พบหมาป่า";
-    const color   = isWolf ? "#ef4444" : "#10b981";
+    const color = isWolf ? "#ef4444" : "#10b981";
     return card("🕵️", "ผลสืบสวน", color,
       `<p style="margin:4px 0">${name} และคนข้างเคียง</p><p style="font-size:1.15em;font-weight:800;color:${color};margin:6px 0">${verdict}</p>`,
       `${color}40`, `${color}10`);
@@ -1185,8 +1185,8 @@ function buildNightFeedbackHTML(feedback) {
 
   if (T === "witch") {
     const isHeal = feedback.action === "ชุบชีวิต";
-    const color  = isHeal ? "#10b981" : "#ef4444";
-    const icon2  = isHeal ? "🧪" : "☠️";
+    const color = isHeal ? "#10b981" : "#ef4444";
+    const icon2 = isHeal ? "🧪" : "☠️";
     return card(icon2, `${feedback.action} สำเร็จ!`, color,
       `<p style="margin:4px 0">${name}</p><p class="nf-sub">รอ GM ประกาศผลตอนเช้า</p>`,
       `${color}40`, `${color}10`);
@@ -1253,13 +1253,13 @@ function renderHunterPanel(panel, players, hostId) {
       </div>
       <div class="night-target-grid">
         ${targets.length === 0
-          ? `<p style="color:var(--text-muted);font-size:0.84rem;grid-column:1/-1;text-align:center">ไม่มีเป้าหมายที่มีชีวิต</p>`
-          : targets.map(([id, p]) =>
-              `<button class="night-target-btn" onclick="window._nightAction('hunter','${id}',this)">
+      ? `<p style="color:var(--text-muted);font-size:0.84rem;grid-column:1/-1;text-align:center">ไม่มีเป้าหมายที่มีชีวิต</p>`
+      : targets.map(([id, p]) =>
+        `<button class="night-target-btn" onclick="window._nightAction('hunter','${id}',this)">
                 <div class="night-avatar">${p.name.charAt(0).toUpperCase()}</div>
                 <span>${escapeHtml(p.name)}</span>
               </button>`
-            ).join("")}
+      ).join("")}
       </div>
       <button class="btn btn-ghost mt-3 w-100" style="color:#d1d5db;border:1px solid rgba(255,255,255,0.3)"
         onclick="window._nightAction('hunter','skip',this,'skip')">ไม่ยิงใคร — ยอมรับชะตา</button>
@@ -1275,10 +1275,10 @@ function renderDayPanel(me) {
     panel.innerHTML = `<div class="day-dead-msg">💀 คุณถูกตัดสิทธิ์แล้ว ยังดูแลคุยได้ในช่อง "ผีสิง" นะ</div>`;
     return;
   }
-  
+
   const isSilenced = me.status?.silenced;
   const isBanned = me.status?.banned;
-  
+
   if (isSilenced) {
     panel.innerHTML = `
       <div class="day-silenced-msg">
@@ -1288,7 +1288,7 @@ function renderDayPanel(me) {
       </div>`;
     return;
   }
-  
+
   if (isBanned) {
     panel.innerHTML = `
       <div class="day-silenced-msg">
@@ -1298,7 +1298,7 @@ function renderDayPanel(me) {
       </div>`;
     return;
   }
-  
+
   panel.innerHTML = `
     <div class="day-instructions">
       <div class="day-sun-icon">☀️</div>
@@ -1311,11 +1311,11 @@ function renderDayPanel(me) {
 
 async function updateSeerResult() {
   const result = await getSeerResult();
-  const el     = document.getElementById("seer-result");
+  const el = document.getElementById("seer-result");
   if (!el) return;
   if (result) {
     const verdict = result.isWolf ? "🐺 หมาป่า!" : "✅ ชาวบ้าน";
-    const color   = result.isWolf ? "#ef4444" : "#10b981";
+    const color = result.isWolf ? "#ef4444" : "#10b981";
     el.classList.remove("hidden");
     el.style.cssText = `color:${color}; border-color:${color}40; background:${color}10;`;
     el.textContent = `🔮 ${result.targetName} คือ ${verdict}`;
@@ -1327,7 +1327,7 @@ async function updateSeerResult() {
 // ─── Player Sidebar (player list) ─────────────────────────────────────────────
 
 function renderPlayerSidebar(players, hostId) {
-  const list  = document.getElementById("game-player-list");
+  const list = document.getElementById("game-player-list");
   if (!list) return;
 
   const myRole = players[STATE.playerId]?.role || "";
@@ -1337,19 +1337,19 @@ function renderPlayerSidebar(players, hostId) {
     .filter(([id]) => id !== hostId)  // exclude GM from sidebar
     .map(([id, p]) => {
       const status = p.isAlive ? "alive" : "dead";
-      const isMe   = id === STATE.playerId;
+      const isMe = id === STATE.playerId;
       let roleHint = "";
       if (myRole === "werewolf" && p.role === "werewolf" && !isMe) {
         roleHint = `<span class="wolf-hint">🐺</span>`;
       }
-      
+
       // Status badges for sidebar
       const pStatus = p.status || {};
       let statusBadges = "";
       if (pStatus.silenced) statusBadges += `<span class="sb-badge sb-silenced">🤐</span>`;
       if (pStatus.banned) statusBadges += `<span class="sb-badge sb-banned">🚫</span>`;
       if (pStatus.lover) statusBadges += `<span class="sb-badge sb-lover">💘</span>`;
-      
+
       return `
         <div class="player-status player-${status} ${isMe ? "player-me" : ""}">
           <div class="ps-avatar ${status}">${p.name.charAt(0).toUpperCase()}</div>
@@ -1373,7 +1373,7 @@ export function showEliminationBanner(elim) {
   let isKill = false;
   let fxType = "";
 
-  if (elim.reason === "protected")  text = "🛡️ แพทย์ช่วยเหลือ! ไม่มีใครตายในคืนนี้";
+  if (elim.reason === "protected") text = "🛡️ แพทย์ช่วยเหลือ! ไม่มีใครตายในคืนนี้";
   else if (elim.reason === "no-action") text = "🌙 คืนอันเงียบสงัด... ไม่มีใครเสียชีวิต";
   else if (elim.reason === "werewolf") {
     text = `🐺 ${elim.playerName} ถูกหมาป่าสังหาร! พวกเขาคือ ${getRoleConfig(elim.playerRole).name}`;
@@ -1383,9 +1383,9 @@ export function showEliminationBanner(elim) {
     text = `🗳️ ${elim.playerName} ถูกโหวตไล่ออก! พวกเขาคือ ${getRoleConfig(elim.playerRole).name}`;
     isKill = true; fxType = "active-vote";
   }
-  else if (elim.reason === "tie")           text = "🗳️ โหวตเสมอ! ไม่มีผู้ถูกกำจัดในรอบนี้";
-  else if (elim.reason === "skipped")       text = "🗳️ GM ข้ามรอบโหวต";
-  else if (elim.reason === "prince_saved")  text = `👑 ${elim.playerName} ถูกโหวต แต่รอดชีวิต! เพราะเขาคือเจ้าชาย 👑`;
+  else if (elim.reason === "tie") text = "🗳️ โหวตเสมอ! ไม่มีผู้ถูกกำจัดในรอบนี้";
+  else if (elim.reason === "skipped") text = "🗳️ GM ข้ามรอบโหวต";
+  else if (elim.reason === "prince_saved") text = `👑 ${elim.playerName} ถูกโหวต แต่รอดชีวิต! เพราะเขาคือเจ้าชาย 👑`;
   else {
     text = elim.playerName ? `${elim.playerName} ถูกกำจัดออก` : "";
     if (elim.playerName) { isKill = true; fxType = "active-vote"; }
@@ -1394,19 +1394,19 @@ export function showEliminationBanner(elim) {
   if (text) {
     banner.textContent = text;
     banner.classList.remove("hidden");
-    
+
     if (isKill && fxOverlay && fxText) {
       fxText.textContent = `${elim.playerName} ตาย!`;
       fxOverlay.className = `fx-overlay ${fxType}`;
       fxOverlay.classList.remove("hidden");
-      
+
       // Delay dismissing the screen blocking effect
       setTimeout(() => {
         fxOverlay.classList.add("hidden");
         fxOverlay.className = "fx-overlay hidden";
       }, 4000);
     }
-    
+
     setTimeout(() => banner.classList.add("hidden"), 6000);
   }
 }
@@ -1414,27 +1414,27 @@ export function showEliminationBanner(elim) {
 // ─── Result Screen ─────────────────────────────────────────────────────────────
 
 function renderResult(roomData) {
-  const winner  = roomData.winnerTeam;
+  const winner = roomData.winnerTeam;
   const players = roomData.players || {};
-  const banner  = document.getElementById("result-banner");
+  const banner = document.getElementById("result-banner");
 
   if (banner) {
     banner.className = `result-banner result-${winner}`;
-    const iconEl     = banner.querySelector(".result-icon");
-    const titleEl    = banner.querySelector(".result-title");
-    const subEl      = banner.querySelector(".result-subtitle");
+    const iconEl = banner.querySelector(".result-icon");
+    const titleEl = banner.querySelector(".result-title");
+    const subEl = banner.querySelector(".result-subtitle");
     if (winner === "werewolf") {
-      if (iconEl)  iconEl.textContent  = "🐺";
+      if (iconEl) iconEl.textContent = "🐺";
       if (titleEl) titleEl.textContent = "หมาป่าชนะ!";
-      if (subEl)   subEl.textContent   = "หมู่บ้านตกอยู่ในความมืด หมาป่าครองคืนแล้ว...";
+      if (subEl) subEl.textContent = "หมู่บ้านตกอยู่ในความมืด หมาป่าครองคืนแล้ว...";
     } else if (winner === "villager") {
-      if (iconEl)  iconEl.textContent  = "🏘️";
+      if (iconEl) iconEl.textContent = "🏘️";
       if (titleEl) titleEl.textContent = "ชาวบ้านชนะ!";
-      if (subEl)   subEl.textContent   = "หมู่บ้านปลอดภัยแล้ว! หมาป่าทุกตัวถูกจับได้หมด";
+      if (subEl) subEl.textContent = "หมู่บ้านปลอดภัยแล้ว! หมาป่าทุกตัวถูกจับได้หมด";
     } else {
-      if (iconEl)  iconEl.textContent  = "🎭";
+      if (iconEl) iconEl.textContent = "🎭";
       if (titleEl) titleEl.textContent = "ผู้เล่นอิสระชนะ!";
-      if (subEl)   subEl.textContent   = "ฝ่ายอิสระบรรลุเป้าหมายการเอาชีวิตรอดของตนเอง!";
+      if (subEl) subEl.textContent = "ฝ่ายอิสระบรรลุเป้าหมายการเอาชีวิตรอดของตนเอง!";
     }
   }
 
@@ -1443,7 +1443,7 @@ function renderResult(roomData) {
     revealList.innerHTML = Object.entries(players)
       .filter(([id]) => id !== roomData.hostId)   // exclude GM from result list
       .map(([id, p]) => {
-        const cfg  = getRoleConfig(p.role);
+        const cfg = getRoleConfig(p.role);
         const isMe = id === STATE.playerId;
         return `
           <div class="result-player ${p.isAlive ? "result-alive" : "result-dead"}">
@@ -1452,7 +1452,7 @@ function renderResult(roomData) {
               <span class="result-player-name">${escapeHtml(p.name)} ${isMe ? "<em>(คุณ)</em>" : ""}</span>
               <span class="result-role" style="color:${cfg.color}">${cfg.icon} ${cfg.name}</span>
             </div>
-            <span class="result-alive-badge">${p.isAlive ? "รอดสัตว์" : "💀 ถูกตัดสิทธิ์"}</span>
+            <span class="result-alive-badge">${p.isAlive ? "ผู้รอดชีวิต" : "💀 ถูกตัดสิทธิ์"}</span>
           </div>`;
       }).join("");
   }
@@ -1475,7 +1475,7 @@ async function kickPlayer(playerId) {
   await remove(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${playerId}`));
 }
 
-window._togglePlayerAlive = async function(id, isDead) {
+window._togglePlayerAlive = async function (id, isDead) {
   if (!STATE.isHost) return;
   // isDead=true → revive (isAlive=true), isDead=false → kill (isAlive=false)
   const toLive = !!isDead;
@@ -1487,7 +1487,7 @@ window._togglePlayerAlive = async function(id, isDead) {
     if (player?.role === "hunter") {
       await triggerHunterAbility(id);
     }
-    
+
     // Check lover death (Cupid mechanic)
     const lovers = STATE.roomData?.lovers;
     if (lovers) {
@@ -1516,7 +1516,7 @@ window._togglePlayerAlive = async function(id, isDead) {
 
 export async function toggleReady() {
   if (STATE.isHost) return; // GM doesn't toggle ready
-  const me  = STATE.roomData?.players?.[STATE.playerId];
+  const me = STATE.roomData?.players?.[STATE.playerId];
   const was = me?.isReady || false;
   await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${STATE.playerId}`), {
     isReady: !was,
@@ -1549,21 +1549,21 @@ function showView(viewName) {
 }
 
 function resetState() {
-  STATE.roomId     = null;
-  STATE.roomData   = null;
+  STATE.roomId = null;
+  STATE.roomData = null;
   STATE.playerName = "";
-  STATE.isHost     = false;
+  STATE.isHost = false;
 }
 
 function persistSession() {
   try {
     localStorage.setItem("ww_session", JSON.stringify({
-      roomId:     STATE.roomId,
-      playerId:   STATE.playerId,
+      roomId: STATE.roomId,
+      playerId: STATE.playerId,
       playerName: STATE.playerName,
-      isHost:     STATE.isHost,
+      isHost: STATE.isHost,
     }));
-  } catch (_) {}
+  } catch (_) { }
 }
 
 // ─── Global Action Handlers ────────────────────────────────────────────────────
@@ -1586,7 +1586,7 @@ window._updateDeckCount = async function (role, change) {
 let selectedNightTargets = [];
 window._nightAction = async function (role, targetId, btnEl, extraData = null) {
   const roleCfg = ROLES[role];
-  
+
   if (targetId === "skip") {
     selectedNightTargets = [];
     document.querySelectorAll(".night-target-btn").forEach(b => { b.disabled = true; });
@@ -1598,36 +1598,36 @@ window._nightAction = async function (role, targetId, btnEl, extraData = null) {
   }
 
   if (roleCfg.actionType === "target2") {
-     if (selectedNightTargets.includes(targetId)) return;
-     selectedNightTargets.push(targetId);
-     
-     if (btnEl.parentElement && btnEl.parentElement.classList.contains("witch-card")) {
-         btnEl.parentElement.classList.add("night-selected");
-     } else {
-         btnEl.classList.add("night-selected");
-     }
+    if (selectedNightTargets.includes(targetId)) return;
+    selectedNightTargets.push(targetId);
 
-     if (selectedNightTargets.length < 2) return;
-     
-     document.querySelectorAll(".night-target-btn").forEach(b => { b.disabled = true; });
-     await submitNightAction(role, selectedNightTargets.join(","), extraData);
-     selectedNightTargets = [];
-     const np = document.getElementById("night-panel");
-     if (np) np.innerHTML = `<div class="night-done"><span class="check-anim">✅</span><p>ส่งการกระทำแล้วรอ GM ประกาศ...</p></div>`;
-     return;
+    if (btnEl.parentElement && btnEl.parentElement.classList.contains("witch-card")) {
+      btnEl.parentElement.classList.add("night-selected");
+    } else {
+      btnEl.classList.add("night-selected");
+    }
+
+    if (selectedNightTargets.length < 2) return;
+
+    document.querySelectorAll(".night-target-btn").forEach(b => { b.disabled = true; });
+    await submitNightAction(role, selectedNightTargets.join(","), extraData);
+    selectedNightTargets = [];
+    const np = document.getElementById("night-panel");
+    if (np) np.innerHTML = `<div class="night-done"><span class="check-anim">✅</span><p>ส่งการกระทำแล้วรอ GM ประกาศ...</p></div>`;
+    return;
   }
 
   document.querySelectorAll(".night-target-btn").forEach(b => {
     b.classList.remove("night-selected");
     b.disabled = true;
     const btns = b.querySelectorAll("button");
-    if(btns) btns.forEach(bb => bb.disabled = true);
+    if (btns) btns.forEach(bb => bb.disabled = true);
   });
-  
+
   if (btnEl.parentElement && btnEl.parentElement.classList.contains("witch-card")) {
-      btnEl.parentElement.classList.add("night-selected");
+    btnEl.parentElement.classList.add("night-selected");
   } else {
-      btnEl.classList.add("night-selected");
+    btnEl.classList.add("night-selected");
   }
 
   await submitNightAction(role, targetId, extraData);

@@ -7,7 +7,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebas
 import { getAuth, signInAnonymously, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-database.js";
-import { ref, get, remove } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-database.js";
+import { ref, get, remove, onValue } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-database.js";
 import { FIREBASE_CONFIG, DB_PREFIX as _DB_PREFIX }
   from "./firebase-config.js";
 
@@ -198,27 +198,82 @@ function bindHomeEvents() {
     }
   });
 
-  document.getElementById("btn-join-room")?.addEventListener("click", async () => {
-    const name = getPlayerName();
-    const code = document.getElementById("room-code-input")?.value.trim().toUpperCase();
-    if (!name) return;
-    if (!code || code.length < 4) { showHomeError("ใส่รหัสห้องให้ถูกต้อง"); return; }
-    clearHomeError();
-    try {
-      await joinRoom(code, name);
-      persistSession();
-    } catch (e) {
-      showHomeError(e.message || "ไม่สามารถเข้าร่วมห้อง ลองใหม่");
-    }
-  });
-
-  document.getElementById("room-code-input")?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") document.getElementById("btn-join-room")?.click();
-  });
   document.getElementById("player-name-input")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("btn-create-room")?.click();
   });
+
+  subscribeToHomeRoomList();
 }
+
+let _unsubHomeRooms = null;
+
+function subscribeToHomeRoomList() {
+  if (_unsubHomeRooms) _unsubHomeRooms();
+  const listEl = document.getElementById("home-room-list");
+  if (!listEl) return;
+
+  _unsubHomeRooms = onValue(ref(db, `${DB_PREFIX}/rooms`), (snapshot) => {
+    if (!snapshot.exists()) {
+      listEl.innerHTML = `
+        <div class="home-room-empty">
+          <span style="font-size: 2rem; display: block; margin-bottom: 8px; opacity: 0.5;">🏚️</span>
+          ยังไม่มีห้องที่รอผู้เล่น<br>สร้างห้องใหม่เพื่อเริ่มเล่นเลย!
+        </div>`;
+      return;
+    }
+
+    const rooms = snapshot.val();
+    let availableHtml = "";
+    
+    // Convert to array, sort by newest first, and filter
+    const roomEntries = Object.entries(rooms)
+      .filter(([_, room]) => room.status === "waiting")
+      .sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0));
+
+    roomEntries.forEach(([roomId, room], i) => {
+      const players = room.players ? Object.keys(room.players) : [];
+      const hostName = room.players?.[room.hostId]?.name || "—";
+      const maxPlayers = room.maxPlayers || 16;
+      const isFull = players.length >= maxPlayers;
+      
+      if (!isFull) {
+        availableHtml += `
+          <div class="home-room-item" style="animation-delay: ${i * 0.05}s;" onclick="window._joinRoomFromList('${roomId}')">
+            <div class="home-room-info">
+              <div class="home-room-code">${roomId}</div>
+              <div class="home-room-host">GM: ${escapeHtmlAdmin(hostName)}</div>
+            </div>
+            <div class="home-room-players">👥 ${players.length}/${maxPlayers}</div>
+          </div>
+        `;
+      }
+    });
+
+    if (!availableHtml) {
+      listEl.innerHTML = `
+        <div class="home-room-empty">
+          <span style="font-size: 2rem; display: block; margin-bottom: 8px; opacity: 0.5;">🏚️</span>
+          ห้องเต็มหรือยังไม่มีห้องเปิดรับ<br>สร้างห้องใหม่เพื่อเริ่มเล่นเลย!
+        </div>`;
+    } else {
+      listEl.innerHTML = availableHtml;
+    }
+  });
+}
+
+window._joinRoomFromList = async (roomId) => {
+  const name = getPlayerName();
+  if (!name) return;
+  clearHomeError();
+  showLoadingScreen(true);
+  try {
+    await joinRoom(roomId, name);
+    persistSession();
+  } catch (e) {
+    showLoadingScreen(false);
+    showHomeError(e.message || "ไม่สามารถเข้าร่วมห้อง ลองใหม่");
+  }
+};
 
 // ─── Lobby Events ──────────────────────────────────────────────────────────────
 
