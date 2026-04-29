@@ -437,7 +437,7 @@ function clearSession() {
 
 // ─── Admin Panel ───────────────────────────────────────────────────────────────
 
-const ADMIN_PASSWORD = "admin123";
+const ADMIN_PASSWORD = "admin";
 
 function bindAdminEvents() {
   // Open admin modal
