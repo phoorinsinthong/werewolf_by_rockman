@@ -645,6 +645,18 @@ function renderGMPanel(roomData) {
     if (el) el.style.display = (ph === phase) ? "block" : "none";
   });
 
+  const votingCtrl = document.getElementById("gm-ctrl-voting");
+  if (votingCtrl) {
+    const waitingText = votingCtrl.querySelector(".gm-waiting-text");
+    if (waitingText) {
+      if (roomData.inPersonMode) {
+        waitingText.innerHTML = "👉 <b>โหมดเสมือนจริง:</b> <span style='color:var(--day-gold)'>เลื่อนขึ้นด้านบน 👆</span> เพื่อเลือกคนที่จะถูกแขวนคอ";
+      } else {
+        waitingText.innerHTML = "🗳️ รอผู้เล่นโหวต... กด อนุมัติ เมื่อพร้อม";
+      }
+    }
+  }
+
   // 6. Hunter pending notification
   let hunterNotify = document.getElementById("gm-hunter-notify");
   if (!hunterNotify) {
