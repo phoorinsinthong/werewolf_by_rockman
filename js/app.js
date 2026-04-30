@@ -43,7 +43,11 @@ import {
   approveNightAction, rejectNightAction
 } from "./game.js";
 
-import { castVote, resolveVotes, gmSkipVote } from "./voting.js";
+import { castVote, resolveVotes, gmSkipVote, gmInPersonVoteEliminate } from "./voting.js";
+
+window._gmApproveVote = resolveVotes;
+window._gmSkipVote = gmSkipVote;
+window._gmInPersonVoteEliminate = gmInPersonVoteEliminate;
 
 // ─── App Init ──────────────────────────────────────────────────────────────────
 

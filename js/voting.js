@@ -190,6 +190,33 @@ export async function resolveVotes() {
   }
 }
 
+// ─── GM: Force Eliminate (In-Person Mode) ──────────────────────────────────────
+
+export async function gmInPersonVoteEliminate(targetId) {
+  if (!STATE.isHost) return;
+  const roomSnap = await get(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`));
+  const roomData = roomSnap.val() || {};
+  const players = roomData.players || {};
+  const target = players[targetId];
+
+  if (!target) return;
+
+  if (target.role === "prince" && !target.status?.princeUsed) {
+    await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/players/${targetId}/status`), { princeUsed: true });
+    await clearVotes();
+    await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`), {
+      phase:           "standby",
+      timerEnd:        null,
+      lastElimination: {
+        playerId: targetId, playerName: target.name, playerRole: target.role,
+        reason: "prince_saved", timestamp: Date.now(),
+      },
+    });
+  } else {
+    await eliminatePlayer(targetId, "vote", target);
+  }
+}
+
 // ─── GM: Skip Vote (no elimination) ───────────────────────────────────────────
 
 export async function gmSkipVote() {

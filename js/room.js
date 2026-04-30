@@ -779,6 +779,32 @@ function renderGMVoteTally(roomData) {
   const total = alive.length;
   const voted = alive.filter(([, p]) => p.vote).length;
 
+  if (roomData.inPersonMode) {
+    tally.innerHTML = `
+      <div style="padding:10px; text-align:center;">
+        <h4 style="color:var(--day-gold);"><span style="font-size:1.5em; vertical-align:-3px;">👉</span> โหมดเสมือนจริง</h4>
+        <p style="font-size:0.9em; color:var(--text-muted); margin-bottom:12px;">ให้ผู้เล่นใช้วิธีการชี้นิ้วเพื่อโหวต<br>เมื่อได้ผลสรุปแล้ว ให้ GM เลือกคนที่ถูกโหวตออกที่นี่:</p>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; justify-content:center;">
+          ${alive.filter(([id]) => id !== roomData.hostId).map(([id, p]) => `
+            <button class="btn btn-danger btn-sm" onclick="window._gmInPersonVoteEliminate('${id}')" style="margin-bottom: 4px;">แขวนคอ: ${escapeHtml(p.name)}</button>
+          `).join("")}
+        </div>
+      </div>
+    `;
+    
+    const approveBtn = document.getElementById("gm-btn-approve-vote");
+    if (approveBtn) approveBtn.style.display = "none";
+    const skipBtn = document.getElementById("gm-btn-skip-vote");
+    if (skipBtn) skipBtn.innerHTML = "<span class=\"front\">ไม่มีคนถูกแขวนคอ (ข้ามโหวต)</span>";
+    return;
+  }
+
+  // Restore normal mode buttons
+  const approveBtn = document.getElementById("gm-btn-approve-vote");
+  if (approveBtn) approveBtn.style.display = "";
+  const skipBtn = document.getElementById("gm-btn-skip-vote");
+  if (skipBtn) skipBtn.innerHTML = "<span class=\"front\">ข้าม (ไม่แขวนคอ)</span>";
+
   const voteMap = {};
   for (const [, p] of alive) {
     if (p.vote) voteMap[p.vote] = (voteMap[p.vote] || 0) + 1;
