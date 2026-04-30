@@ -48,6 +48,17 @@ export function renderVoting(roomData) {
   const players     = roomData.players || {};
   const hostId      = roomData.hostId;
   const me          = players[STATE.playerId];
+
+  if (roomData.inPersonMode) {
+    grid.innerHTML = `<div class="night-waiting" style="padding: 20px; text-align: center; grid-column: 1 / -1;"><div style="font-size:3em; margin-bottom:10px;">👉</div><h3 style="color:var(--day-gold);">โหวตด้วยการชี้นิ้ว!</h3><p style="color:var(--text-muted); margin-top:8px;">โปรดใช้วิธีการชี้นิ้วเพื่อโหวต (ไม่ใช้มือถือ)<br>รอ GM สรุปผลการโหวตจากเสียงข้างมาก...</p></div>`;
+    if (submitBtn) submitBtn.style.display = "none";
+    const progressEl = document.getElementById("vote-progress");
+    if (progressEl) progressEl.textContent = "โหมดเสมือนจริง";
+    return;
+  }
+
+  if (submitBtn) submitBtn.style.display = "";
+
   const myVote      = me?.vote;
   const isSilenced  = me?.status?.silenced;
   const isBanned    = me?.status?.banned;

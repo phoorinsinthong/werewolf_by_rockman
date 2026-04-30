@@ -38,6 +38,7 @@ export async function createRoom(playerName) {
     phase: null,
     dayCount: 0,
     maxPlayers: 16,
+    inPersonMode: false,
     roleDeckCounts: {},
     players: {
       [STATE.playerId]: {
@@ -456,6 +457,16 @@ function renderLobby(roomData) {
 
     const setupContainer = document.getElementById("gm-deck-setup");
     if (setupContainer) setupContainer.innerHTML = deckSetupHtml;
+
+    const toggleInPerson = document.getElementById("toggle-in-person-mode");
+    if (toggleInPerson) {
+      toggleInPerson.onchange = async (e) => {
+        await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}`), {
+          inPersonMode: e.target.checked
+        });
+      };
+      toggleInPerson.checked = !!roomData.inPersonMode;
+    }
   }
 
   // Render Public Deck (for all to see)
@@ -840,9 +851,40 @@ function renderGMNightControl(roomData) {
     `;
   }).join("");
 
-  // 3. Render Pending Action
+  // 3. Render Pending Action or In-Person Target Selection
   const pending = actions.pending;
-  if (pending) {
+  if (roomData.inPersonMode && currentTurn && !actions[currentTurn + "TargetDone"]) {
+    pendingContainer.classList.remove("hidden");
+    const roleCfg = ROLES[currentTurn];
+    const isWitch = currentTurn === "witch";
+    
+    let targetsHtml = `<div style="margin-top: 5px;">`;
+    targetsHtml += `<p style="color:var(--day-gold); margin-bottom:8px; font-size:0.9em;">👉 โหมดเสมือนจริง: เลือกเป้าหมายสำหรับ ${roleCfg.name} ${roleCfg.actionType === 'target2' ? '(เลือก 2 คน)' : ''}</p>`;
+    
+    targetsHtml += `<div style="display:flex; flex-wrap:wrap; gap:6px;">`;
+    if (!isWitch) {
+      Object.entries(players).filter(([_, p]) => p.isAlive && p.role !== "gm").forEach(([id, p]) => {
+        targetsHtml += `<button class="btn btn-secondary btn-sm gm-inperson-btn" onclick="window._gmInPersonAction('${currentTurn}', '${id}', this)">${escapeHtml(p.name)}</button>`;
+      });
+      targetsHtml += `<button class="btn btn-ghost btn-sm" style="border:1px solid rgba(255,255,255,0.2)" onclick="window._gmInPersonAction('${currentTurn}', 'skip', this)">ข้าม</button>`;
+    } else {
+      targetsHtml += `<button class="btn btn-ghost btn-sm" style="border:1px solid rgba(255,255,255,0.2); width:100%" onclick="window._gmInPersonAction('${currentTurn}', 'skip', this)">ข้าม (ไม่ใช้ยา)</button>`;
+      targetsHtml += `<div style="width:100%; margin: 4px 0; color:#8b5cf6; font-size:0.85em;">🧪 ยาชุบชีวิต:</div>`;
+      Object.entries(players).filter(([_, p]) => !p.isAlive && p.role !== "gm").forEach(([id, p]) => {
+        targetsHtml += `<button class="btn btn-sm" style="background:#8b5cf6; color:white; border:none;" onclick="window._gmInPersonAction('${currentTurn}', '${id}', this, 'heal')">ชุบ: ${escapeHtml(p.name)}</button>`;
+      });
+      targetsHtml += `<div style="width:100%; margin: 4px 0; color:#ef4444; font-size:0.85em;">🧪 ยาพิษ:</div>`;
+      Object.entries(players).filter(([_, p]) => p.isAlive && p.role !== "gm").forEach(([id, p]) => {
+        targetsHtml += `<button class="btn btn-danger btn-sm gm-inperson-btn" onclick="window._gmInPersonAction('${currentTurn}', '${id}', this, 'poison')">พิษ: ${escapeHtml(p.name)}</button>`;
+      });
+    }
+    targetsHtml += `</div></div>`;
+    
+    pendingContent.innerHTML = targetsHtml;
+    document.getElementById("gm-btn-approve-action").style.display = "none";
+    document.getElementById("gm-btn-reject-action").style.display = "none";
+
+  } else if (pending) {
     const roleCfg = ROLES[pending.role];
     const targetPlayer = players[pending.targetId];
     const targetName = pending.targetId === "skip" ? "ไม่เลือกใคร (ข้าม)" : (targetPlayer ? targetPlayer.name : "???");
@@ -851,8 +893,13 @@ function renderGMNightControl(roomData) {
     let actionInfo = `<b>${roleCfg.icon} ${roleCfg.name}</b> เลือกเป้าหมาย: <b style="color:#6ee7b7">${targetName}</b>`;
     if (pending.extraData) actionInfo += ` (${pending.extraData})`;
     pendingContent.innerHTML = actionInfo;
+    
+    document.getElementById("gm-btn-approve-action").style.display = "";
+    document.getElementById("gm-btn-reject-action").style.display = "";
   } else {
     pendingContainer.classList.add("hidden");
+    document.getElementById("gm-btn-approve-action").style.display = "";
+    document.getElementById("gm-btn-reject-action").style.display = "";
   }
 }
 
@@ -1037,6 +1084,11 @@ function renderNightPanel(me, players) {
       // GM approved but feedback not yet written — show pending
       panel.innerHTML = `<div class="night-done"><span class="check-anim">✅</span><p>GM อนุมัติแล้ว!</p><p style="color:var(--text-muted);font-size:0.85em">รอประกาศผลตอนเช้า</p></div>`;
     }
+    return;
+  }
+
+  if (STATE.roomData?.inPersonMode) {
+    panel.innerHTML = `<div class="night-waiting" style="padding:16px"><div class="moon-anim" style="font-size:3em;">👉</div><h3 style="color:var(--day-gold);">โหมดเสมือนจริง</h3><p style="color:var(--text-muted); margin-top:8px;">GM จะเป็นคนเรียกบทบาท<br>ใช้วิธีการชี้นิ้วเพื่อเลือกเป้าหมาย (ไม่ต้องกดในมือถือ)</p></div>`;
     return;
   }
 
@@ -1634,6 +1686,56 @@ window._nightAction = async function (role, targetId, btnEl, extraData = null) {
 
   const np = document.getElementById("night-panel");
   if (np) np.innerHTML = `<div class="night-done"><span class="check-anim">✅</span><p>ส่งการกระทำแล้ว รอ GM ประกาศ...</p></div>`;
+};
+
+let _gmSelectedTargets = [];
+window._gmInPersonAction = async function(role, targetId, btnEl, extraData = null) {
+  if (!STATE.isHost) return;
+  const roleCfg = ROLES[role];
+  
+  // Find actual player who holds this role
+  const players = STATE.roomData?.players || {};
+  let actualPlayerId = STATE.playerId; // Default to GM if no one has it
+  for (const [pId, p] of Object.entries(players)) {
+    if (p.isAlive && p.role === role) {
+      actualPlayerId = pId;
+      break;
+    }
+  }
+
+  if (targetId !== 'skip' && roleCfg && roleCfg.actionType === "target2") {
+    if (_gmSelectedTargets.includes(targetId)) return;
+    _gmSelectedTargets.push(targetId);
+    if (btnEl) btnEl.classList.add("btn-primary");
+    
+    if (_gmSelectedTargets.length < 2) return;
+    
+    const payload = {
+      pending: {
+        role,
+        targetId: _gmSelectedTargets.join(","),
+        extraData,
+        submittedBy: actualPlayerId,
+        timestamp: Date.now()
+      }
+    };
+    await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/nightActions`), payload);
+    _gmSelectedTargets = [];
+    await window._approveAction();
+    return;
+  }
+
+  const payload = {
+    pending: {
+      role,
+      targetId,
+      extraData,
+      submittedBy: actualPlayerId,
+      timestamp: Date.now()
+    }
+  };
+  await update(ref(db, `${DB_PREFIX}/rooms/${STATE.roomId}/nightActions`), payload);
+  await window._approveAction();
 };
 
 export { persistSession, resetState, showView };
