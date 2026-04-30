@@ -94,6 +94,7 @@ body::before {
   z-index: 0;
   animation: orb-drift 15s ease-in-out infinite alternate;
   transition: background 2s ease, opacity 2s ease, filter 2s ease;
+  will-change: transform;
 }
 .bg-orb-1 { width: 600px; height: 600px; background: radial-gradient(circle, #7c3aed, #4c1d95); top: -15%; left: -15%; animation-delay: 0s; }
 .bg-orb-2 { width: 500px; height: 500px; background: radial-gradient(circle, #dc2626, #7f1d1d); bottom: -15%; right: -10%; animation-delay: -5s; animation-duration: 18s; }
@@ -111,6 +112,13 @@ body[data-phase="night"] .bg-orb-3, body[data-phase="night-done"] .bg-orb-3 { ba
 @keyframes orb-drift {
   from { transform: translate(0, 0) scale(1) rotate(0deg); }
   to   { transform: translate(40px, -40px) scale(1.15) rotate(5deg); }
+}
+
+@media (max-width: 768px) {
+  .bg-orb {
+    animation: none;
+    filter: blur(50px);
+  }
 }
 
 /* Stars Background */

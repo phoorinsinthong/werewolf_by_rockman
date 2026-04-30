@@ -560,7 +560,9 @@
     window.addEventListener('DOMContentLoaded', () => {
       const stars = document.getElementById('bg-stars');
       if (stars) {
-        for (let i = 0; i < 80; i++) {
+        const isMobile = window.innerWidth <= 768;
+        const starCount = isMobile ? 15 : 80;
+        for (let i = 0; i < starCount; i++) {
           const s = document.createElement('div');
           s.className = 'star';
           s.style.cssText = `left:${Math.random()*100}%;top:${Math.random()*100}%;width:${Math.random()*2+1}px;height:${Math.random()*2+1}px;animation-delay:${Math.random()*4}s;animation-duration:${Math.random()*3+2}s`;

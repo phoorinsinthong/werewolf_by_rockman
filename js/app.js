@@ -269,6 +269,7 @@ window._joinRoomFromList = async (roomId) => {
   try {
     await joinRoom(roomId, name);
     persistSession();
+    showLoadingScreen(false);
   } catch (e) {
     showLoadingScreen(false);
     showHomeError(e.message || "ไม่สามารถเข้าร่วมห้อง ลองใหม่");
